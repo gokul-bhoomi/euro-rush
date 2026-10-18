@@ -23,7 +23,9 @@ export const TUNE = {
   boostMax: 260, boostTime: 3, boostKick: 30,
   knockDecay: 0.02,                    // fraction of sideways knock-back left after 1s
   // traffic that gets hit: a forward shove that fades out (1/s) and a sideways knock on a spring back to its lane
-  shoveDecay: 1.5, knockSpring: 40, knockDamp: 9, knockMax: 9, bounce: 0.2,
+  // hit traffic: the forward shove fades at shoveDecay/s; a side knock (kick + impulse, capped at knockVmax)
+  // can push it up to knockMax px off its lane, then a soft spring brings it back over ~1.5 s
+  shoveDecay: 1.5, knockSpring: 6, knockDamp: 4.9, knockMax: 24, knockKick: 280, knockVmax: 170, bounce: 0.4,
   towTime: 2.5, towPenalty: 10, towHp: 60, invuln: 2,
   hitCd: 0.4, bumpCd: 0.8, finishGrace: 30,
 };

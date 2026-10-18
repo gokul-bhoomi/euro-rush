@@ -389,3 +389,32 @@ test('croissant and pizza heal like Brezel and Döner', () => {
   assert.equal(r.players[0].hp, 40 + HEAL.croissant + HEAL.pizza);
   assert.equal(r.players[0].stats.snacks, 2);
 });
+
+// Overtaking at ~200 km/h and flicking the wheel into a vehicle in lane 3 for 0.3 s.
+function swipe(type) {
+  const r = racing(emptyTrack({ length: 99999, vehicles: [veh(0, 3, 600, 66, type)] }));
+  const p = r.players[0], car = r.veh[0];
+  p.x = laneX(2) + (type === 'vespa' ? 8 : 2); p.y = 560; p.v = 133;
+  let kx = 0;
+  for (let i = 0; i < 240; i++) { stepRace(r, [{ gas: true, steer: i < 18 ? 1 : 0 }], STEP); kx = Math.max(kx, Math.abs(car.kx)); }
+  return { kx, dmg: 100 - p.hp, p };
+}
+
+test('a side-swipe while overtaking visibly knocks the car aside: a Vespa most, a tram barely', () => {
+  const vespa = swipe('vespa'), car = swipe('car'), bus = swipe('bus'), tram = swipe('tram');
+  assert.ok(car.kx > 12, `car knocked ${car.kx.toFixed(1)}px (should be about half a lane)`);
+  assert.ok(vespa.kx > car.kx && car.kx > bus.kx * 1.5 && bus.kx > tram.kx, `vespa ${vespa.kx}, car ${car.kx}, bus ${bus.kx}, tram ${tram.kx}`);
+  assert.ok(tram.kx < 4, 'a tram barely budges');
+  assert.ok(vespa.kx <= TUNE.knockMax);
+});
+
+test('holding the steering into a small vehicle does not snowball into a wreck', () => {
+  const r = racing(emptyTrack({ length: 99999, vehicles: [veh(0, 3, 600, 66, 'vespa')] }));
+  const p = r.players[0], v = r.veh[0];
+  p.x = laneX(3) - 12; p.y = 600; p.v = 66;
+  let kvx = 0;
+  for (let i = 0; i < 120; i++) { stepRace(r, [{ gas: true, steer: 1 }], STEP); kvx = Math.max(kvx, Math.abs(v.kvx)); }
+  assert.ok(100 - p.hp < 20, `lost ${100 - p.hp} HP grinding a Vespa for 2 s`);
+  assert.ok(kvx <= TUNE.knockVmax, `knock speed ran away: ${kvx}`);
+  assert.ok(v.kx >= 40 + v.w / 2 - laneX(3) && v.kx <= 192 - v.w / 2 - laneX(3), 'never pushed past the sidewalk');
+});
