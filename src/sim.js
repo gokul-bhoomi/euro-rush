@@ -126,6 +126,12 @@ const trafficHurt = (R, p, base, k, closing, m, kind) => {
   if (closing >= DMG.nudge) hurt(R, p, Math.min(DMG.maxHit, (base + k * closing) * heft(m)), kind); // gentle touches are free
 };
 
+// how far a knocked vehicle may be pushed off its lane centre: up to knockMax, never past the sidewalk
+function knockRange(v) {
+  const x = laneX(v.lane);
+  return [Math.max(-TUNE.knockMax, 40 + v.w / 2 - x), Math.min(TUNE.knockMax, 192 - v.w / 2 - x)];
+}
+
 function knock(R, v, wdir, strength) {
   // light vehicles wobble more; a tram barely twitches
   const light = 1 / (1 + mass(v.w, v.h));
@@ -155,15 +161,20 @@ function hitTraffic(R, p) {
       p.wobble = 0.8;
       hurt(R, p, d, glancing ? 'swipe' : 'headon');
     } else if (o.ox < o.oy) {
-      // side scrape: both get pushed apart, the lighter one further
+      // side scrape: the overlap is split between us and it (the lighter one moves further), and while
+      // we are moving towards each other one impulse knocks it away and pushes us back
       const s = p.x < vx ? -1 : 1;
-      const closing = Math.abs(p.lat + p.vx - v.kvx) + 0.3 * Math.abs(p.v - v.v - v.dvy);
-      const kx = clamp(v.kx - s * o.ox * (1 - share), -T.knockMax, T.knockMax);
+      const approach = -s * (p.lat + p.vx - v.kvx); // > 0 while closing in sideways
+      const closing = Math.max(0, approach) + 0.3 * Math.abs(p.v - v.v - v.dvy);
+      const [lo, hi] = knockRange(v);
+      const kx = clamp(v.kx - s * o.ox * (1 - share) ** 2, lo, hi);
       p.x += s * (o.ox - Math.abs(kx - v.kx)); v.kx = kx;
-      v.kvx -= s * (50 + closing) * (1 - share);
-      p.vx = s * (40 + 60 * share); p.v *= 1 - 0.1 * share - 0.05;
-      knock(R, v, -s, closing);
-      trafficHurt(R, p, DMG.sideScrape, DMG.sideScrapeK, closing, m, 'scrape');
+      if (approach > 0) {
+        v.kvx = clamp(v.kvx - s * (T.knockKick + closing * (1 + T.bounce)) * (1 - share) ** 2, -T.knockVmax, T.knockVmax); // heavy ones barely budge
+        p.vx = s * (40 + 60 * share); p.v *= 1 - 0.1 * share - 0.05;
+        knock(R, v, -s, closing);
+        trafficHurt(R, p, DMG.sideScrape, DMG.sideScrapeK, closing, m, 'scrape');
+      }
     } else if (p.y < vy) {
       // rear-end: momentum goes into the car in front, which gets shoved forward
       const rel = Math.max(0, p.v - v.v - v.dvy);
@@ -196,7 +207,9 @@ function stepTraffic(R, dt) {
     v.dy += v.dvy * dt;
     v.dvy *= Math.exp(-T.shoveDecay * dt);
     v.kvx += (-T.knockSpring * v.kx - T.knockDamp * v.kvx) * dt;
-    v.kx = clamp(v.kx + v.kvx * dt, -T.knockMax, T.knockMax);
+    const [lo, hi] = knockRange(v);
+    v.kx = clamp(v.kx + v.kvx * dt, lo, hi);
+    if (v.kx === lo || v.kx === hi) v.kvx = 0; // stopped by the kerb
     v.wob = Math.max(0, v.wob - dt);
     keepGap(R, v);
     if (Math.abs(v.dvy) < 0.5 && Math.abs(v.kx) < 0.2 && Math.abs(v.kvx) < 1 && v.wob === 0) {
