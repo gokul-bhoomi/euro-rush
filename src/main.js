@@ -1,11 +1,10 @@
 import { W, H, HW, MID, STEP, CAR_H, PAL } from './config.js';
-import { makeBerlin, roadPos } from './track.js';
+import { TRACKS, roadPos, vehY, vehX } from './track.js';
 import { createRace, stepRace, rank } from './sim.js';
 import { setCtx, R, txt, drawWorld, drawHud, drawBanner, drawMid } from './render.js';
 import { drawTitle, drawTracks, drawResults, drawPause, drawCountdown, drawSoloPanel } from './screens.js';
 import { createInput } from './input.js';
 import { createAudio } from './audio.js';
-import { vehY, vehX } from './track.js';
 
 const cv = document.getElementById('screen');
 const ctx = cv.getContext('2d');
@@ -16,19 +15,21 @@ const octx = off.getContext('2d');
 const input = createInput();
 const audio = createAudio();
 const qs = new URLSearchParams(location.search);
-const POP = { pretzel: 'BREZEL +HP', doner: 'DÖNER +HP', espresso: 'ESPRESSO!' };
+const POP = { pretzel: 'BREZEL +HP', doner: 'DÖNER +HP', croissant: 'CROISSANT +HP', pizza: 'PIZZA +HP', espresso: 'ESPRESSO!' };
+const TRACK_IDS = ['berlin', 'italia'];
 
 const S = {
-  screen: 'title', joined: [true, false], trackSel: 0, menuSel: 0, pauseSel: 0, paused: false,
+  screen: 'title', joined: [true, false], trackSel: Math.max(0, TRACK_IDS.indexOf(qs.get('track'))), menuSel: 0, pauseSel: 0, paused: false,
   race: null, seed: Number(qs.get('seed')) || 1 + Math.floor(Math.random() * 1e6),
-  fx: [], shake: [0, 0], drifting: [false, false], now: 0, clock: 0, screenAt: 0, doneTimer: 0, lastBeep: 0, lockedFlash: -9, errors: [],
+  fx: [], shake: [0, 0], drifting: [false, false], now: 0, clock: 0, screenAt: 0, doneTimer: 0, lastBeep: 0, errors: [],
 };
-const preview = createRace(makeBerlin(77), 1);
+const previews = TRACK_IDS.map((id) => createRace(TRACKS[id](77), 1));
 const DBG = { paused: qs.get('pause') === '1', override: [null, null], menu: [] };
 
 function startRace(o = {}) {
   const n = o.players ?? (S.joined[1] ? 2 : 1);
-  S.race = createRace(makeBerlin(o.seed ?? S.seed++), n);
+  if (o.track) S.trackSel = Math.max(0, TRACK_IDS.indexOf(o.track));
+  S.race = createRace(TRACKS[TRACK_IDS[S.trackSel]](o.seed ?? S.seed++), n);
   if (o.skipCountdown) { S.race.countdown = 0; S.race.phase = 'race'; }
   Object.assign(S, { screen: 'race', fx: [], shake: [0, 0], paused: false, doneTimer: 0, lastBeep: 0 });
   audio.playMusic('race');
@@ -83,7 +84,7 @@ function update(dt) {
     if (!S.joined[1] && (m[1].confirm || m[1].start)) { S.joined[1] = true; audio.play('select'); }
     else if (any('left') || any('right')) { S.trackSel = 1 - S.trackSel; audio.play('blip'); }
     else if (m[0].confirm || m[0].start || (S.joined[1] && (m[1].confirm || m[1].start))) {
-      if (S.trackSel === 0) { audio.play('select'); startRace(); } else { S.lockedFlash = S.now; audio.play('blip'); }
+      audio.play('select'); startRace();
     } else if (any('back')) S.screen = 'title';
   } else if (S.screen === 'race') {
     const race = S.race;
@@ -145,7 +146,7 @@ function render() {
   setCtx(ctx); ctx.setTransform(1, 0, 0, 1, 0, 0);
   R(0, 0, W, H, '#000');
   if (S.screen === 'title') drawTitle(ctx, S.now, S.joined, !audio.muted, S.pads || 0);
-  else if (S.screen === 'tracks') drawTracks(ctx, S.now, S.trackSel, S.joined, preview, off, octx, S.lockedFlash);
+  else if (S.screen === 'tracks') drawTracks(ctx, S.now, S.trackSel, S.joined, previews, off, octx);
   else if (S.screen === 'race') drawRaceScreen();
   else if (S.screen === 'results') drawResults(ctx, S.race, S.menuSel, S.now);
   if (!audio.running && !audio.muted && S.screen !== 'race') txt('PRESS ANY KEY FOR SOUND', 240, 2, '#ffffff', 'center', 8, 'rgba(0,0,0,.6)');
@@ -188,7 +189,7 @@ window.__game = {
         screen: S.screen, paused: S.paused, joined: S.joined, trackSel: S.trackSel, menuSel: S.menuSel,
         audio: { running: audio.running, muted: audio.muted, music: audio.mode }, fx: S.fx.map((f) => f.text || f.kind),
         race: race && {
-          phase: race.phase, t: r1(race.t), countdown: r1(race.countdown), deadline: race.deadline, length: race.track.length,
+          track: race.track.id, phase: race.phase, t: r1(race.t), countdown: r1(race.countdown), deadline: race.deadline, length: race.track.length,
           players: race.players.map((p) => ({
             id: p.id, x: r1(p.x), y: r1(p.y), v: r1(p.v), hp: r1(p.hp), boost: r1(p.boost), tow: r1(p.tow), drift: r1(p.drift),
             penalty: p.penalty, finish: p.finish && r1(p.finish), dnf: p.dnf, rank: rank(race, p), stats: { ...p.stats, topSpeed: r1(p.stats.topSpeed) },

@@ -37,10 +37,10 @@ export const DMG = {
   bumpVictim: 6, bumpRammer: 3, rearBump: 3,
 };
 
-export const HEAL = { pretzel: 15, doner: 30 };
+export const HEAL = { pretzel: 15, doner: 30, croissant: 15, pizza: 30 };
 
 export const VEH = {
-  car: { w: 14, h: 24 }, truck: { w: 16, h: 42 }, tram: { w: 18, h: 88 }, bus: { w: 16, h: 46 },
+  car: { w: 14, h: 24 }, truck: { w: 16, h: 42 }, tram: { w: 18, h: 88 }, bus: { w: 16, h: 46 }, fiat: { w: 12, h: 18 }, vespa: { w: 6, h: 14 },
 };
 
 // Riviera Pop palette (chosen in the mockup)

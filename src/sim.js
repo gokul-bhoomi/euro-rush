@@ -128,7 +128,8 @@ const trafficHurt = (R, p, base, k, closing, m, kind) => {
 
 function knock(R, v, wdir, strength) {
   // light vehicles wobble more; a tram barely twitches
-  v.wob = 0.8; v.wamp = Math.min(0.5, strength / 300) * (2 / (1 + mass(v.w, v.h)));
+  const light = 1 / (1 + mass(v.w, v.h));
+  v.wob = 0.8; v.wamp = Math.min(0.55, Math.min(0.5, strength / 300) * 2 * light * light);
   v.wdir = wdir;
   if (!R.knocked.includes(v)) R.knocked.push(v);
 }

@@ -62,20 +62,39 @@ function truck(cx, y, c, down) {
   R(x, trY, w, 29, '#9a9a9a'); R(x + 1, trY + 1, w - 2, 27, '#e2e2e2'); R(x + 1, trY + 12, w - 2, 4, c);
   const fy = down ? y + h - 2 : y; R(x + 2, fy, 3, 2, '#fff4b0'); R(x + w - 5, fy, 3, 2, '#fff4b0');
 }
-function tram(cx, y) {
+// one of the tram's three 30px sections (k = 0 is the front), top at s
+function tramSeg(cx, s, k) {
   const w = 18, x = Math.round(cx - w / 2);
-  R(x + 2, y + 3, w, 88, 'rgba(0,0,0,.28)');
-  for (let k = 0; k < 3; k++) {
-    const s = y + k * 30;
-    R(x, s, w, 28, '#b48f00'); R(x + 1, s + 1, w - 2, 26, '#f3c300'); R(x + 4, s + 6, w - 8, 14, '#d9dad6'); R(x + 5, s + 8, w - 10, 3, '#9fa19c');
-    if (k < 2) R(x + 3, s + 28, w - 6, 2, '#3a3a3a');
-  }
-  R(x + 3, y + 1, w - 6, 3, '#30353f'); R(x + 5, y + 38, 8, 1, '#333'); R(x + 8, y + 34, 2, 8, '#333');
+  R(x + 2, s + 3, w, 28, 'rgba(0,0,0,.28)');
+  R(x, s, w, 28, '#b48f00'); R(x + 1, s + 1, w - 2, 26, '#f3c300'); R(x + 4, s + 6, w - 8, 14, '#d9dad6'); R(x + 5, s + 8, w - 10, 3, '#9fa19c');
+  if (k < 2) R(x + 3, s + 28, w - 6, 2, '#3a3a3a');
+  if (k === 0) R(x + 3, s + 1, w - 6, 3, '#30353f');
+  if (k === 1) { R(x + 5, s + 8, 8, 1, '#333'); R(x + 8, s + 4, 2, 8, '#333'); }
+}
+function tram(cx, y) { for (let k = 0; k < 3; k++) tramSeg(cx, y + k * 30, k); }
+function bus(cx, y, down) {
+  const w = 16, h = 46, x = Math.round(cx - w / 2);
+  R(x + 2, y + 3, w, h, 'rgba(0,0,0,.28)'); R(x, y, w, h, '#1d4a91'); R(x + 1, y + 1, w - 2, h - 2, '#2c63b8');
+  R(x + 3, y + 14, w - 6, 10, '#e8eef5'); R(x + 2, down ? y + h - 5 : y + 2, w - 4, 3, '#a8dcff'); R(x + 3, y + 30, w - 6, 6, '#2457a3');
+  const fy = down ? y + h - 2 : y; R(x + 2, fy, 3, 2, '#fff4b0'); R(x + w - 5, fy, 3, 2, '#fff4b0');
+}
+function fiat(cx, y, c, down) {
+  const w = 12, h = 18, x = Math.round(cx - w / 2);
+  R(x + 2, y + 3, w, h, 'rgba(0,0,0,.28)'); R(x + 1, y, w - 2, h, shade(c, -0.35)); R(x, y + 1, w, h - 2, shade(c, -0.35)); R(x + 1, y + 1, w - 2, h - 2, c);
+  R(x + 2, y + 6, w - 4, 7, '#f4f1e8'); R(x + 2, down ? y + 12 : y + 4, w - 4, 2, '#a8dcff');
+  const fy = down ? y + h - 1 : y; R(x + 2, fy, 2, 1, '#fff4b0'); R(x + w - 4, fy, 2, 1, '#fff4b0');
+}
+function vespa(cx, y, c, down) {
+  const x = Math.round(cx - 3);
+  R(x + 2, y + 2, 6, 14, 'rgba(0,0,0,.25)'); R(x + 1, y, 4, 14, c); R(x, y + 5, 6, 4, '#2a2a2a'); disc(x + 3, y + 7, 2, '#111'); R(x + 2, down ? y + 13 : y, 2, 1, '#fff4b0');
 }
 function vehicle(v, cx, y) {
   const down = v.v < 0;
   if (v.type === 'truck') truck(cx, y, v.c, down);
   else if (v.type === 'tram') tram(cx, y);
+  else if (v.type === 'bus') bus(cx, y, down);
+  else if (v.type === 'fiat') fiat(cx, y, v.c, down);
+  else if (v.type === 'vespa') vespa(cx, y, v.c, down);
   else car(cx, y, v.c, down);
 }
 
@@ -83,9 +102,16 @@ function vehicle(v, cx, y) {
 const CH = 600, cache = new Map();
 const ROOFS = ['#8b8f98', '#9a8a78', '#a07462', '#b3ada3'];
 function chunk(track, c) {
-  const key = track.seed * 100000 + c;
-  let k = cache.get(key);
+  const id = `${track.id}:${track.seed}:${c}`;
+  let k = cache.get(id);
   if (k) return k;
+  k = track.id === 'italia' ? italiaChunk(track, c) : berlinChunk(track, c);
+  cache.set(id, k);
+  if (cache.size > 300) cache.delete(cache.keys().next().value);
+  return k;
+}
+function berlinChunk(track, c) {
+  const key = track.seed * 100000 + c;
   const r = rng(key * 7919 + 13), y0 = c * CH;
   const gal = track.monuments.find((m) => m.kind === 'gallery');
   const inGal = (y) => gal && y > gal.y0 - 30 && y < gal.y1 + 30;
@@ -107,10 +133,52 @@ function chunk(track, c) {
   for (let y = y0 + 10; y < y0 + CH - 10; y += 22 + Math.floor(r() * 18)) if (inPark(y)) trees.push({ x: 8 + Math.floor(r() * 24), y }, { x: 202 + Math.floor(r() * 24), y: y + 11 });
   const lamps = [{ x: 50, y: y0 + 60, l: 1 }, { x: 50, y: y0 + 360, l: 1 }, { x: 182, y: y0 + 210, l: 0 }, { x: 182, y: y0 + 510, l: 0 }];
   for (let i = 0; i < 60; i++) specks.push({ x: ROAD_X + 4 + r() * 120, y: y0 + r() * CH, c: r() < 0.5 ? shade(track.road, -0.08) : shade(track.road, 0.05) });
-  k = { bl, br, trees, lamps, specks };
-  cache.set(key, k);
-  if (cache.size > 300) cache.delete(cache.keys().next().value);
-  return k;
+  return { bl, br, trees, lamps, specks };
+}
+
+// Italia has three kinds of roadside: the coast (sea on the left, cliffs with houses and lemon trees
+// on the right), the hills around the switchbacks (terraces, cypresses, olive trees) and Rome at the end.
+const HOUSES = ['#f3b0a8', '#f7da7a', '#f2c39a', '#e9e2cf', '#9fd1c9'];
+const ROMA = ['#d98b4a', '#c96f3b', '#e3b26a', '#b5523b', '#e8c48a'];
+export function zoneAt(track, y) {
+  if ((track.parks || []).some((z) => y > z.s0 && y < z.s1)) return 'hills';
+  if (track.rome && y > track.rome.s0 && y < track.rome.s1) return 'rome';
+  return 'coast';
+}
+const ZONE_BG = { coast: '#2a7fc0', hills: '#7c9a4a', rome: '#d8c6a0' };
+function italiaChunk(track, c) {
+  const r = rng((track.seed * 100000 + c) * 7919 + 29), y0 = c * CH;
+  const zone = (y) => zoneAt(track, y), is = (z, ...ys) => ys.every((y) => zone(y) === z);
+  const mon = (kind) => track.monuments.find((m) => m.kind === kind)?.y ?? -1e9;
+  const pisa = mon('pisa'), colo = mon('colosseum'), nearPisa = (y) => y > pisa - 30 && y < pisa + 110;
+  const houses = [], trees = [], waves = [], boats = [], rocks = [], bl = [], br = [], specks = [];
+  for (let y = y0 + 4; y < y0 + CH - 30;) {
+    const h = 14 + Math.floor(r() * 14), w = 14 + Math.floor(r() * 10), x = 196 + Math.floor(r() * (27 - w));
+    if (!is('coast', y, y + h) || nearPisa(y) || nearPisa(y + h)) { y += 10; continue; }
+    houses.push({ x, y, w, h, c: HOUSES[Math.floor(r() * HOUSES.length)] });
+    y += h + 14 + Math.floor(r() * 24);
+  }
+  for (let y = y0 + 10; y < y0 + CH - 10; y += 30 + Math.floor(r() * 24)) {
+    const z = zone(y), k = r(), x = Math.floor(r() * 26);
+    if (z === 'coast' && !nearPisa(y)) trees.push({ x: 226 + (x % 4), y, k: k < 0.35 ? 'cypress' : 'lemon' });
+    if (z === 'hills') trees.push({ x: 6 + x, y, k: k < 0.5 ? 'cypress' : 'olive' }, { x: 226 - x, y: y + 13, k: k < 0.5 ? 'olive' : 'cypress' });
+    if (z === 'rome' && k < 0.4) trees.push({ x: 44, y, k: 'pine' });
+  }
+  for (let i = 0; i < 14; i++) { const y = y0 + r() * CH, x = 2 + r() * 28, l = 2 + Math.floor(r() * 4); if (zone(y) === 'coast') waves.push({ x, y, l }); }
+  if (r() < 0.6) { const y = y0 + 40 + r() * (CH - 80), x = 6 + Math.floor(r() * 20); if (is('coast', y - 20, y + 20)) boats.push({ x, y }); }
+  for (let i = 0; i < 24; i++) { const y = y0 + r() * CH, x = 196 + r() * 34; if (zone(y) === 'coast') rocks.push({ x, y }); }
+  // Rome: blocks of ochre and terracotta buildings on both sides, the Colosseum on the right
+  for (const side of [bl, br]) {
+    for (let y = y0 + 4; ;) {
+      const h = 46 + Math.floor(r() * 50), w = 26 + Math.floor(r() * 10), cc = ROMA[Math.floor(r() * ROMA.length)], d = r();
+      if (y + h > y0 + CH - 3) break;
+      if (is('rome', y, y + h) && (side === bl || y > colo + 40 || y + h < colo - 40)) side.push({ y, h, w, c: cc, d });
+      y += h + 3;
+    }
+  }
+  const lamps = [{ x: 50, y: y0 + 80, l: 1 }, { x: 182, y: y0 + 240, l: 0 }, { x: 50, y: y0 + 400, l: 1 }, { x: 182, y: y0 + 560, l: 0 }];
+  for (let i = 0; i < 60; i++) specks.push({ x: ROAD_X + 4 + r() * 120, y: y0 + r() * CH, c: r() < 0.5 ? shade(track.road, -0.08) : shade(track.road, 0.05) });
+  return { houses, trees, waves, boats, rocks, bl, br, lamps, specks };
 }
 
 let cam = 0, camS = CAM_Y;
@@ -130,12 +198,35 @@ function tvTower(cx, y) {
   disc(cx, y + 28, 9, '#b9bec8'); disc(cx - 2, y + 25, 5, '#e9ecf1'); R(cx - 9, y + 27, 18, 3, '#4b515e');
   for (let k = 0; k < 6; k++) R(cx - 1, y + k * 3, 2, 3, k % 2 ? '#ffffff' : '#e03030');
 }
-function gate(y) {
-  const x0 = 30, w = 172, c = '#d9c497', e = '#a48d61';
+function gate(y, roma = false) {
+  const x0 = 30, w = 172, c = roma ? '#e9dfc6' : '#d9c497', e = roma ? '#b9a988' : '#a48d61';
   R(x0, y + 22, w, 10, 'rgba(0,0,0,.28)');
   for (const px of [32, 48, 82, 113, 146, 178, 194]) R(px, y + 21, 6, 5, e);
   R(x0, y, w, 22, e); R(x0 + 1, y + 1, w - 2, 20, c); R(x0 + 1, y + 4, w - 2, 1, e); R(x0 + 1, y + 17, w - 2, 1, e);
+  if (roma) { txt('SPQR', 116, y + 7, '#8d7b5c', 'center'); return; }
   R(106, y + 7, 20, 9, '#3f8f74'); for (let k = 0; k < 4; k++) R(107 + k * 5, y + 4, 3, 4, '#2f7a60'); R(112, y + 12, 8, 3, '#2c6b55');
+}
+// the Leaning Tower, seen from above at an angle: base at (cx, by)
+function pisa(cx, by) {
+  G.save(); G.translate(cx, by); G.rotate(0.12);
+  G.fillStyle = 'rgba(0,0,0,.22)'; G.fillRect(-3, -2, 16, 6);
+  R(-7, -64, 14, 64, '#f1ece0'); R(4, -64, 3, 64, '#cfc8b6');
+  for (let k = 0; k < 7; k++) { R(-7, -64 + k * 9, 14, 1, '#bdb6a4'); for (let i = 0; i < 4; i++) R(-5 + i * 3, -61 + k * 9, 1, 4, '#b0a894'); }
+  R(-5, -72, 10, 8, '#ece6d6'); R(-5, -72, 10, 1, '#bdb6a4'); R(-8, -2, 16, 3, '#d8d0bc'); G.restore();
+}
+function colosseum(cx, cy) {
+  ell(cx + 2, cy + 3, 20, 32, 'rgba(0,0,0,.25)'); ell(cx, cy, 20, 32, '#d4b277'); ell(cx, cy, 17, 28, '#b8955a'); ell(cx, cy, 14, 24, '#cfae73'); ell(cx, cy, 9, 17, '#e8d6a4');
+  for (let k = -12; k <= 12; k += 4) R(cx - 6, cy + k, 12, 1, '#c3a06a');
+  R(cx, cy - 14, 1, 28, '#c3a06a');
+  for (let a = 0; a < Math.PI * 2; a += 0.22) R(cx + Math.cos(a) * 18.5, cy + Math.sin(a) * 30, 1, 1, '#8f6f3f');
+  for (let a = -1.5; a < -0.3; a += 0.06) R(cx + Math.cos(a) * 19 - 1, cy + Math.sin(a) * 31 - 1, 3, 2, '#b8955a');
+}
+function italiaTree(t, y) {
+  if (t.k === 'cypress') { ell(t.x + 2, y + 2, 3, 9, 'rgba(0,0,0,.25)'); ell(t.x, y, 3, 9, '#2f5a2a'); R(t.x - 1, y - 6, 1, 8, '#4a7a3a'); return; }
+  if (t.k === 'pine') { disc(t.x + 3, y + 3, 8, 'rgba(0,0,0,.25)'); disc(t.x, y, 8, '#3f6f35'); disc(t.x - 2, y - 2, 4, '#5a8f45'); return; }
+  const c = t.k === 'olive' ? ['#7f9a6a', '#a3b98c'] : ['#3f8a3a', '#57a04c'];
+  disc(t.x + 2, y + 2, 5, 'rgba(0,0,0,.25)'); disc(t.x, y, 5, c[0]); disc(t.x - 1, y - 1, 2, c[1]);
+  if (t.k === 'lemon') { R(t.x - 2, y - 1, 2, 2, '#ffe14a'); R(t.x + 2, y + 2, 2, 2, '#ffe14a'); R(t.x, y - 3, 2, 2, '#ffe14a'); }
 }
 function checker(wy) { const y = sY(wy); for (let i = 0; i < 32; i++) for (let j = 0; j < 2; j++) R(ROAD_X + i * 4, y + j * 4, 4, 4, (i + j) % 2 ? '#111' : '#fff'); }
 function coneTop(x, y) { R(x - 2, y - 2, 5, 5, '#ff6a00'); R(x - 1, y - 1, 3, 3, '#ffffff'); R(x, y, 1, 1, '#ff6a00'); }
@@ -175,6 +266,75 @@ function runEnd(T, s) {
   return Infinity;
 }
 
+// Berlin: grey sidewalks, buildings, trees and lamps, the East Side Gallery
+function berlinSides(T, c0, c1, wBot, wTop, SH) {
+  R(0, 0, HW, SH, '#5f8a4a');
+  for (const sx of [38, 180]) { R(sx, 0, 14, SH, '#aaa59c'); for (let wy = Math.floor(wBot / 16) * 16; wy < wTop; wy += 16) R(sx, sY(wy), 14, 1, '#96918a'); }
+  R(50, 0, 2, SH, '#d2cec6'); R(180, 0, 2, SH, '#d2cec6');
+  for (let c = c0; c <= c1; c++) {
+    const k = chunk(T, c);
+    for (const b of k.bl) { const y = sY(b.y + b.h); if (y < SH && y + b.h > 0) roof(36 - b.w, y, b.w, b.h, b.c, b.d); }
+    for (const b of k.br) { const y = sY(b.y + b.h); if (y < SH && y + b.h > 0) roof(196, y, b.w, b.h, b.c, b.d); }
+  }
+  const gal = T.monuments.find((m) => m.kind === 'gallery');
+  if (gal && gal.y0 < wTop && gal.y1 > wBot) {
+    const a = Math.max(gal.y0, wBot), b = Math.min(gal.y1, wTop);
+    R(199, sY(b), 33, b - a, '#3b78a8');
+    const cols = ['#ff4f4f', '#ffd23f', '#3fc1ff', '#7bd35a', '#ff8ad8', '#ffffff', '#ff8a2a'];
+    for (let wy = Math.floor(a / 8) * 8; wy < b; wy += 8) R(194, sY(wy + 8), 5, 8, cols[mod(wy / 8, cols.length)]);
+    for (let wy = Math.floor(a / 37) * 37; wy < b; wy += 37) R(203 + mod(wy * 13, 26), sY(wy), 4, 1, '#6aa6d4');
+    R(198, sY(b), 1, b - a, 'rgba(0,0,0,.3)');
+  }
+  for (let c = c0; c <= c1; c++) {
+    const k = chunk(T, c);
+    for (const tr of k.trees) { const y = sY(tr.y); if (y < -8 || y > SH + 8) continue; disc(tr.x + 2, y + 2, 6, 'rgba(0,0,0,.25)'); disc(tr.x, y, 6, '#356e33'); disc(tr.x - 2, y - 2, 3, '#57a04c'); }
+    for (const l of k.lamps) { const y = sY(l.y); if (y < -4 || y > SH + 4) continue; R(l.x - 1, y - 1, 3, 3, '#3a3a40'); R(l.x + (l.l ? 1 : -4), y, 4, 2, '#e8e2c8'); }
+  }
+}
+
+// Italia: sea, promenade and cliffs on the coast, terraced hills around the switchbacks, Rome at the end
+function italiaSides(T, c0, c1, wBot, wTop, SH, now) {
+  // zones on screen, as [zone, from, to] in road distance
+  const cuts = [wBot, wTop];
+  for (const z of [...(T.parks || []), T.rome]) for (const e of [z.s0, z.s1]) if (e > wBot && e < wTop) cuts.push(e);
+  cuts.sort((p, q) => p - q);
+  for (let i = 0; i + 1 < cuts.length; i++) {
+    const a = cuts[i], b = cuts[i + 1], z = zoneAt(T, (a + b) / 2), top = sY(b), len = b - a;
+    if (z === 'coast') {
+      R(0, top, 36, len, ZONE_BG.coast); R(194, top, 38, len, '#c4a57a');
+      for (let wy = Math.floor(a / 10) * 10; wy < b; wy += 10) R(31 + mod(wy / 10 + Math.floor(now * 3), 2), sY(wy + 10), 5, 4, '#cfeeff');
+      R(36, top, 2, len, '#9c8c6c');
+    } else if (z === 'hills') {
+      for (const x of [0, 194]) { R(x, top, 38, len, ZONE_BG.hills); for (let wy = Math.floor(a / 24) * 24; wy < b; wy += 24) R(x, sY(wy), 38, 1, '#6a8840'); }
+    } else {
+      R(0, top, 38, len, ZONE_BG.rome); R(194, top, 38, len, ZONE_BG.rome);
+    }
+  }
+  for (const sx of [38, 180]) { R(sx, 0, 14, SH, '#e6d7b2'); for (let wy = Math.floor(wBot / 12) * 12; wy < wTop; wy += 12) R(sx, sY(wy), 14, 1, '#c9b78f'); }
+  R(50, 0, 2, SH, '#f4ecd6'); R(180, 0, 2, SH, '#f4ecd6');
+  for (let c = c0; c <= c1; c++) {
+    const k = chunk(T, c);
+    for (const w of k.waves) { const y = sY(w.y); if (y > -2 && y < SH) R(w.x + Math.round(Math.sin(now * 1.5 + w.y) * 2), y, w.l, 1, '#5aa9e0'); }
+    for (const bt of k.boats) { const y = sY(bt.y); if (y > -20 && y < SH) { R(bt.x + 1, y + 10, 3, 8, 'rgba(255,255,255,.45)'); R(bt.x, y, 5, 11, '#ffffff'); R(bt.x + 1, y + 3, 3, 4, '#cfa47a'); } }
+    for (const q of k.rocks) { const y = sY(q.y); if (y > -2 && y < SH) R(q.x, y, 2, 1, '#a98a5f'); }
+    for (const h of k.houses) {
+      const y = sY(h.y + h.h); if (y > SH || y + h.h < 0) continue;
+      R(h.x + 2, y + 3, h.w, h.h, 'rgba(0,0,0,.22)'); R(h.x, y, h.w, h.h - 3, '#c25a3c');
+      for (let rr = y + 2; rr < y + h.h - 3; rr += 3) R(h.x, rr, h.w, 1, '#a8452c');
+      R(h.x, y + Math.floor((h.h - 3) / 2), h.w, 1, '#e07a58'); R(h.x, y + h.h - 3, h.w, 3, h.c); R(h.x + 3, y + h.h - 2, 2, 1, '#5a4a3a'); R(h.x + h.w - 5, y + h.h - 2, 2, 1, '#5a4a3a');
+    }
+    for (const bd of k.bl) { const y = sY(bd.y + bd.h); if (y < SH && y + bd.h > 0) roof(36 - bd.w, y, bd.w, bd.h, bd.c, bd.d); }
+    for (const bd of k.br) { const y = sY(bd.y + bd.h); if (y < SH && y + bd.h > 0) roof(196, y, bd.w, bd.h, bd.c, bd.d); }
+  }
+  const co = T.monuments.find((m) => m.kind === 'colosseum');
+  if (co && co.y - 40 < wTop && co.y + 40 > wBot) colosseum(213, sY(co.y));
+  for (let c = c0; c <= c1; c++) {
+    const k = chunk(T, c);
+    for (const t of k.trees) { const y = sY(t.y); if (y > -12 && y < SH + 12) italiaTree(t, y); }
+    for (const l of k.lamps) { const y = sY(l.y); if (y < -4 || y > SH + 4) continue; R(l.x - 1, y - 1, 3, 3, '#3a3a40'); R(l.x + (l.l ? 1 : -4), y, 4, 2, '#e8e2c8'); }
+  }
+}
+
 export function drawWorld(race, camY, now, fx, opt = {}) {
   const T = race.track, t = opt.t ?? race.t, sv = camY;
   // camera: centre of the road at the viewer, pushed ahead along where the road is going
@@ -201,29 +361,8 @@ export function drawWorld(race, camY, now, fx, opt = {}) {
   const target = G;
   G = strip();
 
-  // sides
-  R(0, 0, HW, SH, '#5f8a4a');
-  for (const sx of [38, 180]) { R(sx, 0, 14, SH, '#aaa59c'); for (let wy = Math.floor(wBot / 16) * 16; wy < wTop; wy += 16) R(sx, sY(wy), 14, 1, '#96918a'); }
-  R(50, 0, 2, SH, '#d2cec6'); R(180, 0, 2, SH, '#d2cec6');
-  for (let c = c0; c <= c1; c++) {
-    const k = chunk(T, c);
-    for (const b of k.bl) { const y = sY(b.y + b.h); if (y < SH && y + b.h > 0) roof(36 - b.w, y, b.w, b.h, b.c, b.d); }
-    for (const b of k.br) { const y = sY(b.y + b.h); if (y < SH && y + b.h > 0) roof(196, y, b.w, b.h, b.c, b.d); }
-  }
-  const gal = T.monuments.find((m) => m.kind === 'gallery');
-  if (gal && gal.y0 < wTop && gal.y1 > wBot) {
-    const a = Math.max(gal.y0, wBot), b = Math.min(gal.y1, wTop);
-    R(199, sY(b), 33, b - a, '#3b78a8');
-    const cols = ['#ff4f4f', '#ffd23f', '#3fc1ff', '#7bd35a', '#ff8ad8', '#ffffff', '#ff8a2a'];
-    for (let wy = Math.floor(a / 8) * 8; wy < b; wy += 8) R(194, sY(wy + 8), 5, 8, cols[mod(wy / 8, cols.length)]);
-    for (let wy = Math.floor(a / 37) * 37; wy < b; wy += 37) R(203 + mod(wy * 13, 26), sY(wy), 4, 1, '#6aa6d4');
-    R(198, sY(b), 1, b - a, 'rgba(0,0,0,.3)');
-  }
-  for (let c = c0; c <= c1; c++) {
-    const k = chunk(T, c);
-    for (const tr of k.trees) { const y = sY(tr.y); if (y < -8 || y > SH + 8) continue; disc(tr.x + 2, y + 2, 6, 'rgba(0,0,0,.25)'); disc(tr.x, y, 6, '#356e33'); disc(tr.x - 2, y - 2, 3, '#57a04c'); }
-    for (const l of k.lamps) { const y = sY(l.y); if (y < -4 || y > SH + 4) continue; R(l.x - 1, y - 1, 3, 3, '#3a3a40'); R(l.x + (l.l ? 1 : -4), y, 4, 2, '#e8e2c8'); }
-  }
+  if (T.id === 'italia') italiaSides(T, c0, c1, wBot, wTop, SH, now);
+  else berlinSides(T, c0, c1, wBot, wTop, SH);
   // hairpins: red/white kerbs on both sidewalks, a stone wall with chevrons on the outside,
   // and two yellow warning boards on the right before each one
   for (const cv of T.curves || []) {
@@ -243,7 +382,7 @@ export function drawWorld(race, camY, now, fx, opt = {}) {
   R(ROAD_X + 2, 0, 2, SH, '#eeeeee'); R(ROAD_R - 4, 0, 2, SH, '#eeeeee');
   for (const lx of [84, 148]) for (let wy = Math.floor(wBot / 40) * 40; wy < wTop; wy += 40) R(lx - 1, sY(wy + 18), 2, 18, '#eeeeee');
   R(113, 0, 2, SH, '#eeeeee'); R(117, 0, 2, SH, '#eeeeee');
-  for (const rx of [91, 107]) { R(rx, 0, 2, SH, '#33343b'); R(rx, 0, 1, SH, '#8e9099'); }
+  if (T.id !== 'italia') for (const rx of [91, 107]) { R(rx, 0, 2, SH, '#33343b'); R(rx, 0, 1, SH, '#8e9099'); } // tram rails
   checker(22); checker(T.length + 8);
 
   for (const w of T.works) works(w, now, SH);
@@ -257,23 +396,6 @@ export function drawWorld(race, camY, now, fx, opt = {}) {
     spr(k.kind, Math.round(cx - sprW(k.kind) / 2), Math.round(y - sprH(k.kind) / 2));
   }
 
-  const vis = []; // vehicles, for the oncoming warnings below
-  for (const v of race.veh) {
-    const vy = vehY(v, v.gone ? v.goneAt : t);
-    if (!v.gone && v.v < 0 && vy > sv && vy < sv + 500) vis.push([v, vy]);
-    if (vy - v.h / 2 > wTop || vy + v.h / 2 < wBot) continue;
-    const x = vehX(T, v, vy), top = sY(vy + v.h / 2);
-    if (v.gone) {
-      const e = t - v.goneAt;
-      if (e > 0.9) continue;
-      G.save(); G.globalAlpha = 1 - e / 0.9; G.translate(x + v.spin * e * 50, top + v.h / 2); G.rotate(v.spin * e * 7);
-      vehicle(v, 0, -v.h / 2); G.restore();
-    } else if (v.wob > 0 || v.kvx) {
-      // knocked by a crash: a decaying wobble plus the nose turning the way it is being pushed
-      const e = 0.8 - v.wob, rot = (v.wob > 0 ? (v.wdir || 0) * v.wamp * Math.exp(-e * 3) * Math.sin(e * 14) : 0) + Math.atan2(v.kvx, Math.max(40, v.v + v.dvy)) * 0.6;
-      G.save(); G.translate(Math.round(x), top + v.h / 2); G.rotate(rot); vehicle(v, 0, -v.h / 2); G.restore();
-    } else vehicle(v, x, top);
-  }
   // speed streaks: road-anchored, longer and brighter the faster the viewer goes
   const sp = Math.max(0, ((opt.speed || 0) - 150) / (TUNE.maxSpeed - 150));
   if (sp > 0) {
@@ -286,7 +408,7 @@ export function drawWorld(race, camY, now, fx, opt = {}) {
   // bend the strip onto the map. Pass 1 draws everything; where switchback legs sit side by side,
   // pass 2 redraws just the road + sidewalks so no leg's scenery covers another leg's road.
   G = target;
-  R(0, 0, HW, H, '#5f8a4a');
+  R(0, 0, HW, H, T.id === 'italia' ? ZONE_BG[zoneAt(T, sv)] : '#5f8a4a');
   const twoPass = (T.parks || []).some((z) => z.s1 > sA && z.s0 < sB);
   for (const [xa, xb] of twoPass ? [[0, HW], [36, 196]] : [[0, HW]]) {
     for (let s = sA; s < sB;) {
@@ -310,6 +432,33 @@ export function drawWorld(race, camY, now, fx, opt = {}) {
     const a = 0.55 * (1 - (now - f.t0) / 3), q = at(f.y, f.x);
     if (a > 0 && q.y > -4 && q.y < H) R(q.x - 1, q.y, 2, 3, `rgba(25,25,30,${a.toFixed(2)})`);
   }
+  // Traffic is drawn at its map position, turned to the road heading (drawn into the strip it would be
+  // squashed on the inside of a turn). Trams bend: each section follows the road on its own.
+  const vis = []; // vehicles, for the oncoming warnings below
+  for (const v of race.veh) {
+    const vy = vehY(v, v.gone ? v.goneAt : t);
+    if (!v.gone && v.v < 0 && vy > sv && vy < sv + 500) vis.push([v, vy]);
+    if (vy - v.h / 2 > wTop || vy + v.h / 2 < wBot) continue;
+    const x = vehX(T, v, vy);
+    const place = (s, fn) => {
+      const q = at(s, x);
+      if (q.x < -60 || q.x > HW + 60 || q.y < -60 || q.y > H + 60) return;
+      G.save(); G.translate(Math.round(q.x), Math.round(q.y)); if (q.a) G.rotate(q.a); fn(); G.restore();
+    };
+    if (v.gone) {
+      const e = t - v.goneAt;
+      if (e > 0.9) continue;
+      place(vy, () => { G.globalAlpha = 1 - e / 0.9; G.translate(v.spin * e * 50, 0); G.rotate(v.spin * e * 7); vehicle(v, 0, -v.h / 2); });
+      continue;
+    }
+    // knocked by a crash (vy and x already include the shove and the sideways knock): a decaying wobble
+    // plus the nose turning the way it is being pushed
+    const e = 0.8 - v.wob, rot = v.v < 0 ? 0 : (v.wob > 0 ? (v.wdir || 0) * v.wamp * Math.exp(-e * 3) * Math.sin(e * 14) : 0) + Math.atan2(v.kvx || 0, Math.max(40, v.v + (v.dvy || 0))) * 0.6;
+    if (v.type === 'tram') for (let k = 0; k < 3; k++) {
+      const d = v.h / 2 - k * 30 - 14; // section centre ahead of the tram's centre: the whole tram turns about its middle
+      place(vy + d, () => { if (rot) { G.translate(d * Math.sin(rot), 0); G.rotate(rot); } tramSeg(0, -14, k); });
+    } else place(vy, () => { if (rot) G.rotate(rot); vehicle(v, 0, -v.h / 2); });
+  }
   // oncoming traffic about to come into view: red marker at the edge of the screen
   if (mod(now * 6, 2) < 1.4) for (const [v, vy] of vis) {
     const q = at(vy - v.h / 2, vehX(T, v, vy));
@@ -332,6 +481,8 @@ export function drawWorld(race, camY, now, fx, opt = {}) {
   for (const m of T.monuments) {
     if (m.kind === 'tower') onRoad(m.y, () => tvTower(20, sY(m.y + 98)));
     if (m.kind === 'gate') onRoad(m.y, () => gate(sY(m.y + 30)));
+    if (m.kind === 'arch') onRoad(m.y, () => gate(sY(m.y + 30), true));
+    if (m.kind === 'pisa') onRoad(m.y, () => pisa(214, sY(m.y)));
   }
 
   for (const f of fx) {

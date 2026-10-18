@@ -1,6 +1,6 @@
 # Euro Rush
 
-A two-player retro top-down racing game for the couch. Plug a laptop into the TV, grab two controllers, and race split-screen from Alexanderplatz to the Brandenburger Tor, past the TV tower and the East Side Gallery and through mountain-style hairpins.
+A two-player retro top-down racing game for the couch. Plug a laptop into the TV, grab two controllers, and race split-screen from Alexanderplatz to the Brandenburger Tor, past the TV tower and the East Side Gallery, or along the Amalfi coast, up the hairpins and into Rome to the Colosseo.
 
 Runs in the browser. No install and no build step.
 
@@ -50,7 +50,8 @@ Both players race at the same time. **The fastest time to the finish wins.** Onc
 - **Hairpins:** yellow signs and a flashing `<<<` / `>>>` HAIRPIN warning come before each switchback. Brake! On the inside lane you're safe at about 120 km/h. Go in much faster and you slide wide onto the kerb and the wall. The outside line is longer but can be taken faster. The gentle sweeping curves can be taken flat out.
 - **Bumping:** you can shove the other player. The car that steers into the other one does more damage.
 - **Damage:** when your HP runs out, your car is towed. You lose a few seconds and get a **+10 s penalty**.
-- **Snacks:** a Brezel heals +15 HP and a Döner heals +30 HP. An **espresso** gives a short speed boost.
+- **Snacks:** in Berlin a Brezel heals +15 HP and a Döner heals +30 HP; in Italia a croissant heals +15 HP and a pizza +30 HP. An **espresso** gives a short speed boost.
+- **Tracks:** Berlin (5.6 km, trams and Baustellen) and Italia (5.9 km, Fiats, Vespas and buses, the sea on your left, three switchbacks through the hills, then the Leaning Tower, Rome and the Colosseo).
 - **Top speed** is 330 km/h, and it takes a long, clean run to get there.
 
 ## For developers
@@ -65,10 +66,10 @@ npm run verify   # unit tests + a headless-Chrome smoke test that plays through 
 **Every commit must pass `npm run verify`.** The pre-commit hook runs it automatically and blocks the commit if anything fails. GitHub Actions runs it again on every push and pull request. `main` is protected: make changes on a branch, open a pull request, and it can merge once the `verify` check passes. Some tests (`tests/intent.test.js` and the `intent:` checks in the smoke test) lock in the game's design decisions, like emptier-but-faster oncoming lanes, Brezel/Döner/espresso, hairpin switchbacks, a short race and the colour palette. If one fails, talk to the owner before changing it. Changed a game rule? Add a test in `tests/sim.test.js`. Added a screen or feature? Add a check in `tests/smoke.mjs`. If you use Claude Code, run the `verify` skill before committing.
 
 - `src/sim.js`: the race rules (pure and deterministic).
-- `src/track.js`: track generation and road path.
+- `src/track.js`: track generation (Berlin, Italia) and road path.
 - `src/render.js` and `src/screens.js`: drawing.
 - `src/audio.js`: synthesized music and sound.
 - `src/input.js`: controllers and keyboard.
 - `mockup/`: the original UI mockup.
 
-Coming later: the Italia track (croissants, pizza and Vespas), more countries, and more.
+Coming later: more countries, and more.

@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRace, stepRace, rank } from '../src/sim.js';
-import { makeBerlin, vehX, vehY, roadPos, pathOf, curvAt, HAIRPIN_R } from '../src/track.js';
-import { TUNE, DMG, STEP, laneX, VEH } from '../src/config.js';
+import { makeBerlin, makeItalia, vehX, vehY, roadPos, pathOf, curvAt, HAIRPIN_R } from '../src/track.js';
+import { TUNE, DMG, STEP, laneX, VEH, HEAL } from '../src/config.js';
 
 const emptyTrack = (extra = {}) => ({ seed: 1, length: 3000, km: 1, works: [], pickups: [], vehicles: [], monuments: [], ...extra });
 const veh = (id, lane, y0, v, type = 'car') => ({ id, lane, y0, v, type, c: '#fff', ...VEH[type] });
@@ -63,7 +63,7 @@ function hitOnce(type, { v = 150, lane = 3, side = false, speed = 40 } = {}) {
   else { p.x = laneX(lane); p.y = 300 - (car.h + 26) / 2 - 1; p.v = v; }
   const inp = side ? [{ steer: 1 }] : [{}];
   let kxMax = 0;
-  for (let i = 0; i < 30; i++) { stepRace(r, inp, STEP); kxMax = Math.max(kxMax, car.kx); }
+  for (let i = 0; i < 45; i++) { stepRace(r, inp, STEP); kxMax = Math.max(kxMax, car.kx); }
   return { r, p, car, dmg: 100 - p.hp, kxMax };
 }
 
@@ -117,6 +117,21 @@ test('one bad crash never wrecks a full-HP car, and head-ons still hurt the most
   h.players[0].v = 150; run(h, [{}], 3);
   const rear = hitOnce('car', { v: 150, speed: 66 });
   assert.ok(100 - h.players[0].hp > (rear.dmg) * 2, `head-on ${100 - h.players[0].hp} vs rear-end ${rear.dmg}`);
+});
+
+test('Italia traffic: a Vespa flies further and hurts less than a bus, a Fiat sits in between', () => {
+  const vespa = hitOnce('vespa'), fiat = hitOnce('fiat'), bus = hitOnce('bus');
+  assert.ok(vespa.car.dvy > fiat.car.dvy && fiat.car.dvy > bus.car.dvy, `shove: vespa ${vespa.car.dvy}, fiat ${fiat.car.dvy}, bus ${bus.car.dvy}`);
+  assert.ok(vespa.dmg < fiat.dmg && fiat.dmg < bus.dmg, `damage: vespa ${vespa.dmg}, fiat ${fiat.dmg}, bus ${bus.dmg}`);
+  assert.ok(vespa.dmg > 0, 'still a crash');
+  const vS = hitOnce('vespa', { side: true }), bS = hitOnce('bus', { side: true });
+  assert.ok(vS.kxMax > bS.kxMax * 2 && vS.kxMax <= TUNE.knockMax, `side knock: vespa ${vS.kxMax}, bus ${bS.kxMax}`);
+  // on the real Italia track, a rear-end into its traffic shoves the vehicle forward
+  const r = racing(makeItalia(7)), p = r.players[0];
+  const v = r.veh.find((u) => u.v > 0 && u.type === 'vespa' && u.y0 > 3000);
+  p.x = laneX(v.lane); p.y = vehY(v, 0) - (v.h + 26) / 2 - 1; p.v = 180;
+  run(r, [{}], 1);
+  assert.ok(v.dy > 20 && p.stats.crashes === 1, `vespa dy ${v.dy}, crashes ${p.stats.crashes}`);
 });
 
 test('a shoved car pushes the one ahead of it instead of driving through it', () => {
@@ -328,4 +343,49 @@ test('traffic and pickups stay in their lanes through a turn', () => {
   const r = racing({ ...tr, pickups: [{ id: 0, lane: 3, y: 1200, kind: 'doner' }] });
   run(r, [GAS], 12);
   assert.equal(r.players[0].stats.snacks, 1, 'stayed in lane through the turn and got the snack');
+});
+
+test('Italia track is deterministic per seed, differs from Berlin, and traffic never overlaps in a lane', () => {
+  assert.equal(JSON.stringify(makeItalia(5)), JSON.stringify(makeItalia(5)));
+  assert.notEqual(JSON.stringify(makeItalia(5)), JSON.stringify(makeItalia(6)));
+  assert.notDeepEqual(makeItalia(5).curves, makeBerlin(5).curves, 'same seed, different road');
+  const t = makeItalia(3);
+  const byLane = (f) => t.vehicles.filter(f).sort((a, b) => a.y0 - b.y0);
+  for (const list of [byLane((v) => v.lane === 2), byLane((v) => v.lane === 3), byLane((v) => v.v < 0)]) {
+    for (let i = 1; i < list.length; i++) assert.ok(list[i].y0 - list[i - 1].y0 > (list[i].h + list[i - 1].h) / 2 + 20, 'gap between vehicles');
+  }
+  const types = new Set(t.vehicles.map((v) => v.type));
+  for (const k of ['fiat', 'vespa', 'bus']) assert.ok(types.has(k), `Italia traffic has ${k}s`);
+  assert.ok(!types.has('tram'), 'no trams in Italia');
+  for (const v of t.vehicles) assert.deepEqual([v.w, v.h], [VEH[v.type].w, VEH[v.type].h]);
+});
+
+test('Italia has three switchbacks and a pair of sweepers, never crosses itself, ends heading north at the Colosseo', () => {
+  for (const seed of [1, 4, 9]) {
+    const t = makeItalia(seed);
+    assert.equal(t.curves.filter((c) => c.kind === 'hairpin').length, 6, 'three switchbacks = six hairpins');
+    assert.equal(t.curves.filter((c) => c.kind === 'sweep').length, 2);
+    assert.equal(t.length, 21000);
+    for (let i = 1; i < t.curves.length; i++) assert.ok(t.curves[i].s0 > t.curves[i - 1].s1, 'turns never overlap');
+    assert.ok(t.curves.at(-1).s1 < t.length - 1500, 'straight run through Rome to the finish');
+    assert.ok(t.parks.at(-1).s1 < t.rome.s0, 'Rome starts after the last switchback');
+    assert.ok(Math.abs(roadPos(t, t.length).a) < 1e-6, 'finish line faces north');
+    const P = pathOf(t);
+    for (let i = 0; i < P.n; i += 6) for (let j = i + 90; j < P.n; j += 6) assert.ok(Math.hypot(P.x[i] - P.x[j], P.y[i] - P.y[j]) > 160);
+    for (const w of t.works) assert.ok(!t.curves.some((c) => c.kind === 'hairpin' && w.y1 > c.s0 - 200 && w.y0 < c.s1 + 200), 'no roadworks in hairpins');
+    const m = Object.fromEntries(t.monuments.map((x) => [x.kind, x.y]));
+    assert.ok(m.colosseum > t.rome.s0 && m.colosseum < t.length, 'Colosseum in Rome, before the finish');
+    assert.equal(m.arch, t.length);
+    assert.ok(!t.parks.some((z) => m.pisa > z.s0 - 300 && m.pisa < z.s1 + 300) && !t.curves.some((c) => m.pisa > c.s0 - 200 && m.pisa < c.s1 + 200), 'Leaning Tower on a straight stretch of coast');
+  }
+});
+
+test('croissant and pizza heal like Brezel and Döner', () => {
+  assert.equal(HEAL.croissant, HEAL.pretzel);
+  assert.equal(HEAL.pizza, HEAL.doner);
+  const r = racing({ ...emptyTrack({ length: 99999 }), pickups: [{ id: 0, lane: 3, y: 300, kind: 'croissant' }, { id: 1, lane: 3, y: 900, kind: 'pizza' }] });
+  r.players[0].hp = 40;
+  run(r, [GAS], 8);
+  assert.equal(r.players[0].hp, 40 + HEAL.croissant + HEAL.pizza);
+  assert.equal(r.players[0].stats.snacks, 2);
 });

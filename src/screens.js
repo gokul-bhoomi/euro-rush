@@ -61,34 +61,27 @@ export function drawTitle(G, now, joined, soundOn, pads) {
   txt(soundOn ? 'M: SOUND ON' : 'M: SOUND OFF', 240, 256, PAL.text, 'center', 8, PAL.ui);
 }
 
-export function drawTracks(G, now, sel, joined, previewRace, off, octx, lockedFlash) {
+export function drawTracks(G, now, sel, joined, previews, off, octx) {
   R(0, 0, W, H, PAL.ui); G.fillStyle = PAL.ui2;
   for (let x = 0; x < W; x += 16) G.fillRect(x, 0, 1, H);
   for (let y = mod(now * 8, 16); y < H; y += 16) G.fillRect(0, Math.round(y), W, 1);
   txt('CHOOSE YOUR ROAD', 240, 12, PAL.accent, 'center', 16, PAL.ui);
   const cards = [
     { name: 'BERLIN', sub: 'ALEX > BRANDENBURG', tags: 'TRAMS + BAUSTELLE', km: '5.6 KM', flag: ['#111111', '#dd1f1f', '#ffcc00'], v: false, snacks: ['pretzel', 'doner', 'espresso'] },
-    { name: 'ITALIA', sub: 'AMALFI > COLOSSEO', tags: 'COMING SOON', km: '9.1 KM', flag: ['#159947', '#f4f4f4', '#d42a2a'], v: true, snacks: ['croissant', 'pizza', 'espresso'], locked: true },
+    { name: 'ITALIA', sub: 'AMALFI > COLOSSEO', tags: 'VESPAS + CLIFFS', km: '5.9 KM', flag: ['#159947', '#f4f4f4', '#d42a2a'], v: true, snacks: ['croissant', 'pizza', 'espresso'] },
   ];
   cards.forEach((T, i) => {
     const x = i ? 256 : 34, y = 48, w = 190, h = 186, on = sel === i;
     R(x, y, w, h, shade(PAL.ui, 0.04)); frame(x, y, w, h, on ? PAL.text : PAL.ui2);
-    if (!T.locked) {
-      setCtx(octx); drawWorld(previewRace, 600 + now * 90, now, [], { t: now, noPlayers: true }); setCtx(G);
-      G.drawImage(off, 23, 120, 186, 110, x + 2, y + 2, 186, 110);
-    } else {
-      R(x + 2, y + 2, 186, 110, '#3f86b8');
-      for (let k = 0; k < 14; k++) R(x + 10 + ((k * 53) % 170), y + 10 + ((k * 31) % 96), 6, 1, '#6aa6d4');
-      R(x + 120, y + 2, 68, 110, '#c4a57a'); ell(x + 160, y + 58, 18, 30, '#d4b277'); ell(x + 160, y + 58, 9, 17, '#e8d6a4');
-      R(x + 30, y + 46, 96, 20, 'rgba(0,0,0,.6)'); txt('SOON', x + 78, y + 52, '#ffffff', 'center');
-    }
+    setCtx(octx); drawWorld(previews[i], 600 + mod(now * 90, 4000), now, [], { t: now, noPlayers: true }); setCtx(G);
+    G.drawImage(off, 23, 120, 186, 110, x + 2, y + 2, 186, 110);
     if (!on) { G.globalAlpha = 0.55; R(x + 2, y + 2, 186, 110, PAL.ui); G.globalAlpha = 1; }
     txt(T.name, x + 8, y + 120, on ? PAL.text : PAL.dim, 'left', 16);
     const fx = x + w - 30, fy = y + 121;
     for (let s = 0; s < 3; s++) { if (T.v) R(fx + s * 7, fy, 7, 14, T.flag[s]); else R(fx, fy + s * 5, 21, 5, T.flag[s]); }
     frame(fx - 1, fy - 1, 23, 16, '#000', 1);
     txt(T.sub, x + 8, y + 142, PAL.dim);
-    txt(T.tags, x + 8, y + 156, T.locked && now - lockedFlash < 1 && mod(now * 8, 2) < 1 ? '#e8402e' : PAL.dim);
+    txt(T.tags, x + 8, y + 156, PAL.dim);
     T.snacks.forEach((k, j) => spr(k, x + 8 + j * 16, y + 170));
     txt(T.km, x + w - 8, y + 172, PAL.accent, 'right');
     if (on) {

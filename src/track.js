@@ -11,17 +11,12 @@ const RAMP = 40;                         // curvature eases in/out over this dis
 // A turn of `angle` radians (+ = right) with centre-line radius R, starting at s0.
 const turn = (s0, angle, R, kind) => ({ s0, s1: s0 + Math.abs(angle) * R + RAMP, k: Math.sign(angle) / R, ramp: RAMP, kind });
 
-// Alexanderplatz -> Brandenburger Tor. Everything is generated from the seed.
-export function makeBerlin(seed = 1) {
-  const r = rng(seed);
-  const L = 20000;
-  const pick = (a) => a[Math.floor(r() * a.length)];
-
-  // The road is a real path: long straights, a few gentle sweepers you can take flat out, and two
-  // switchbacks (a 180-degree hairpin, a short leg back down the screen, a hairpin the other way)
-  // that you have to brake for. Every feature ends heading north again.
-  // Each feature is built from s = 0, then they're spread out with long straights in between.
-  const feats = ['sweep', 'switch', 'sweep', 'switch'].map((f) => {
+// The road is a real path: long straights, a few gentle sweepers you can take flat out, and
+// switchbacks (a 180-degree hairpin, a short leg back down the screen, a hairpin the other way)
+// that you have to brake for. Every feature ends heading north again.
+// Each feature is built from s = 0, then they're spread out with long straights in between.
+function layout(r, order, START, END) {
+  const feats = order.map((f) => {
     const dir = r() < 0.5 ? -1 : 1;
     if (f === 'sweep') {
       const a = (0.45 + r() * 0.25) * dir, R = 450 + Math.floor(r() * 250);
@@ -31,7 +26,6 @@ export function makeBerlin(seed = 1) {
     const h1 = turn(0, Math.PI * dir, HAIRPIN_R, 'hairpin');
     return [h1, turn(h1.s1 + 300 + Math.floor(r() * 120), -Math.PI * dir, HAIRPIN_R, 'hairpin')];
   });
-  const START = 2400, END = L - 1700; // straight start (TV tower) and straight run to the gate
   const gap = (END - START - feats.reduce((n, f) => n + f[1].s1, 0)) / (feats.length - 1);
   const curves = [], parks = [];
   let s = START;
@@ -41,56 +35,115 @@ export function makeBerlin(seed = 1) {
     if (placed[0].kind === 'hairpin') parks.push({ s0: placed[0].s0 - 800, s1: placed[1].s1 + 800 });
     s = placed[1].s1 + gap * (0.8 + r() * 0.2); // never longer than `gap`, so the last one always fits
   }
-  const inPark = (y, m = 0) => parks.some((z) => y > z.s0 - m && y < z.s1 + m);
-  const nearHairpin = (y0, y1, m) => curves.some((c) => c.kind === 'hairpin' && y1 > c.s0 - m && y0 < c.s1 + m);
+  return { curves, parks };
+}
+const inZones = (zones, y, m = 0) => zones.some((z) => y > z.s0 - m && y < z.s1 + m);
 
-  // East Side Gallery: a long painted wall on a stretch without switchbacks
-  const GAL = 3000;
-  let g0 = 4500;
-  while (g0 < L - GAL - 1000 && (inPark(g0, 0) || inPark(g0 + GAL, 0) || parks.some((z) => z.s0 > g0 && z.s0 < g0 + GAL))) g0 += 250;
-
-  // construction zones close one oncoming lane; oncoming cars merge around them
+// construction zones close one oncoming lane; oncoming cars merge around them
+function roadworks(r, L, curves) {
   const works = [];
   for (let y = 2400; y < L - 1600; y += 2200 + Math.floor(r() * 1800)) {
     const w = { lane: r() < 0.55 ? 0 : 1, y0: y, y1: y + 150 + Math.floor(r() * 90) };
-    if (!nearHairpin(w.y0, w.y1, 250)) works.push(w);
+    if (!curves.some((c) => c.kind === 'hairpin' && w.y1 > c.s0 - 250 && w.y0 < c.s1 + 250)) works.push(w);
   }
-  const inWorks = (lane, y, m = 0) => works.some((w) => w.lane === lane && y > w.y0 - m && y < w.y1 + m);
+  return works;
+}
 
+// two snacks that heal (small, big) and espresso for a boost
+function snacks(r, L, works, [small, big]) {
   const pickups = [];
   for (let y = 1300; y < L - 700; y += 600 + Math.floor(r() * 600)) {
     const k = r();
-    const kind = k < 0.38 ? 'pretzel' : k < 0.66 ? 'doner' : 'espresso';
+    const kind = k < 0.38 ? small : k < 0.66 ? big : 'espresso';
     let lane = Math.floor(r() * 4);
-    if (inWorks(lane, y, 80)) lane = (lane + 2) % 4;
+    if (works.some((w) => w.lane === lane && y > w.y0 - 80 && y < w.y1 + 80)) lane = (lane + 2) % 4;
     pickups.push({ id: pickups.length, lane, y, kind });
   }
+  return pickups;
+}
 
+// lane 2 / lane 3 / oncoming: each type(k) picks a vehicle from one random number
+function traffic(r, L, cols, [slow, fast, onc]) {
+  const pick = (a) => a[Math.floor(r() * a.length)];
   const vehicles = [];
   const add = (lane, y, v, type, c) => vehicles.push({ id: vehicles.length, lane, y0: y, v, type, c, w: VEH[type].w, h: VEH[type].h });
   for (let y = 520; y < L + 400;) {
-    const k = r(), type = k < 0.22 ? 'tram' : k < 0.45 ? 'truck' : 'car';
-    add(2, y, SAME_SPEED[2], type, pick(CAR_COLS));
+    const type = slow(r());
+    add(2, y, SAME_SPEED[2], type, pick(cols));
     y += VEH[type].h + 240 + Math.floor(r() * 260);
   }
   for (let y = 760; y < L + 400;) {
-    const type = r() < 0.2 ? 'truck' : 'car';
-    add(3, y, SAME_SPEED[3], type, pick(CAR_COLS));
+    const type = fast(r());
+    add(3, y, SAME_SPEED[3], type, pick(cols));
     y += VEH[type].h + 280 + Math.floor(r() * 300);
   }
   // enough oncoming traffic for a ~5 minute race
   for (let y = 900; y < L - ONC_SPEED * 420;) {
-    const type = r() < 0.18 ? 'truck' : 'car';
-    add(r() < 0.5 ? 0 : 1, y, ONC_SPEED, type, pick(CAR_COLS));
+    const type = onc(r());
+    add(r() < 0.5 ? 0 : 1, y, ONC_SPEED, type, pick(cols));
     y += VEH[type].h + 380 + Math.floor(r() * 520);
   }
+  return vehicles;
+}
+
+// Alexanderplatz -> Brandenburger Tor. Everything is generated from the seed.
+export function makeBerlin(seed = 1) {
+  const r = rng(seed);
+  const L = 20000;
+  const START = 2400, END = L - 1700; // straight start (TV tower) and straight run to the gate
+  const { curves, parks } = layout(r, ['sweep', 'switch', 'sweep', 'switch'], START, END);
+
+  // East Side Gallery: a long painted wall on a stretch without switchbacks
+  const GAL = 3000;
+  let g0 = 4500;
+  while (g0 < L - GAL - 1000 && (inZones(parks, g0) || inZones(parks, g0 + GAL) || parks.some((z) => z.s0 > g0 && z.s0 < g0 + GAL))) g0 += 250;
+
+  const works = roadworks(r, L, curves);
+  const pickups = snacks(r, L, works, ['pretzel', 'doner']);
+  const vehicles = traffic(r, L, CAR_COLS, [
+    (k) => (k < 0.22 ? 'tram' : k < 0.45 ? 'truck' : 'car'),
+    (k) => (k < 0.2 ? 'truck' : 'car'),
+    (k) => (k < 0.18 ? 'truck' : 'car'),
+  ]);
 
   return {
-    name: 'BERLIN', finish: 'BRANDENBURGER TOR', km: 5.6, seed, length: L, road: '#4b4c56',
+    id: 'berlin', name: 'BERLIN', finish: 'BRANDENBURGER TOR', km: 5.6, seed, length: L, road: '#4b4c56',
     curves, parks, works, pickups, vehicles,
     monuments: [{ kind: 'tower', y: 1100 }, { kind: 'gallery', y0: g0, y1: g0 + GAL }, { kind: 'gate', y: L }],
   };
 }
+
+const ITALIA_COLS = ['#d9534f', '#9fd8c9', '#e6c229', '#f4f1e8', '#7fd1b9', '#3a6ea5', '#c9c9c9', '#2f7d4f', '#f2a65a'];
+
+// Amalfi coast -> Colosseo. The coast road runs along the sea (left) under cliffs with houses and
+// lemon trees (right), with sweepers along the sea; three switchbacks climb through the hills; the last stretch runs into Rome.
+export function makeItalia(seed = 1) {
+  const r = rng(seed ^ 0x5eed17a);
+  const L = 21000;
+  const START = 2200, END = L - 2200; // coast at the start, a long straight through Rome at the end
+  const { curves, parks } = layout(r, ['sweep', 'switch', 'switch', 'switch'], START, END);
+  const rome = { s0: END + 400, s1: L + 900 };
+
+  // the Leaning Tower stands on the cliffs halfway, away from the switchbacks
+  let pisa = Math.round(L * 0.45);
+  while (pisa < END && (inZones(parks, pisa, 300) || curves.some((c) => pisa > c.s0 - 200 && pisa < c.s1 + 200))) pisa += 200;
+
+  const works = roadworks(r, L, curves);
+  const pickups = snacks(r, L, works, ['croissant', 'pizza']);
+  const vehicles = traffic(r, L, ITALIA_COLS, [
+    (k) => (k < 0.22 ? 'bus' : k < 0.62 ? 'fiat' : 'car'),
+    (k) => (k < 0.3 ? 'vespa' : k < 0.7 ? 'fiat' : 'car'),
+    (k) => (k < 0.25 ? 'vespa' : k < 0.6 ? 'fiat' : k < 0.7 ? 'truck' : 'car'),
+  ]);
+
+  return {
+    id: 'italia', name: 'ITALIA', finish: 'COLOSSEO, ROMA', km: 5.9, seed, length: L, road: '#58534d',
+    curves, parks, rome, works, pickups, vehicles,
+    monuments: [{ kind: 'pisa', y: pisa }, { kind: 'colosseum', y: L - 700 }, { kind: 'arch', y: L }],
+  };
+}
+
+export const TRACKS = { berlin: makeBerlin, italia: makeItalia };
 
 export const vehY = (v, t) => v.y0 + v.v * t + (v.dy || 0); // dy = how far a crash shoved it
 
