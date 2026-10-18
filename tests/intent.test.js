@@ -8,7 +8,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRace, stepRace, rank } from '../src/sim.js';
-import { makeBerlin, roadPos, pathOf, SAME_SPEED, ONC_SPEED } from '../src/track.js';
+import { makeBerlin, makeItalia, roadPos, pathOf, SAME_SPEED, ONC_SPEED } from '../src/track.js';
 import { TUNE, DMG, HEAL, STEP, KMH, W, H, HW, MID, PAL, laneX } from '../src/config.js';
 
 const SEEDS = [1, 2, 3, 7, 42];
@@ -198,6 +198,47 @@ test('intent: Berlin runs from Alexanderplatz past famous monuments to the Brand
   assert.ok(m.gate && m.gate.y === t.length, 'Brandenburger Tor at the finish line');
   assert.equal(t.finish, 'BRANDENBURGER TOR');
   assert.equal(t.name, 'BERLIN');
+});
+
+// ---------- Italia ----------
+
+test('intent: Italia runs from the Amalfi coast to the Colosseo, with croissant, pizza and espresso', () => {
+  const t = makeItalia(1), m = Object.fromEntries(t.monuments.map((x) => [x.kind, x]));
+  assert.equal(t.name, 'ITALIA');
+  assert.equal(t.finish, 'COLOSSEO, ROMA');
+  assert.ok(m.colosseum && m.arch && m.arch.y === t.length, 'Colosseum and the finish arch in Rome');
+  assert.ok(t.curves[0].s0 > 1500 && !t.parks.some((z) => z.s0 < 3000), 'starts on the coast, not in the hills');
+  for (const seed of SEEDS) {
+    const kinds = new Set(makeItalia(seed).pickups.map((k) => k.kind));
+    assert.deepEqual([...kinds].sort(), ['croissant', 'espresso', 'pizza'], `seed ${seed}`);
+  }
+  assert.ok(HEAL.pizza > HEAL.croissant && HEAL.croissant > 0, 'pizza heals more than a croissant');
+});
+
+test('intent: Italia keeps the same rules - emptier/faster oncoming lanes, calm traffic, roadworks only oncoming', () => {
+  for (const seed of SEEDS) {
+    const t = makeItalia(seed);
+    const onc = t.vehicles.filter((v) => v.v < 0 && v.y0 < t.length), same = t.vehicles.filter((v) => v.v > 0 && v.y0 < t.length);
+    assert.ok(onc.length < same.length, `seed ${seed}: ${onc.length} oncoming vs ${same.length}`);
+    const share = onc.filter((v) => v.lane === 0).length / onc.length;
+    assert.ok(share > 0.3 && share < 0.7, `seed ${seed}: ${Math.round(share * 100)}% in lane 0`);
+    assert.ok((onc.length + same.length) / t.km < 40, `seed ${seed}: too busy`);
+    assert.ok(t.works.length >= 3 && t.works.every((z) => z.lane === 0 || z.lane === 1), `seed ${seed}: roadworks`);
+  }
+});
+
+test('intent: Italia is also a short race with a few hairpin switchbacks', () => {
+  for (const seed of [1, 7, 42]) {
+    const t = makeItalia(seed), c = t.curves;
+    assert.ok(t.km <= 6, `${t.km} km`);
+    assert.ok(c.length <= 8, `seed ${seed}: ${c.length} turns is too many`);
+    assert.ok(c.filter((x) => x.kind === 'hairpin').length >= 4, 'at least two switchbacks');
+    const feats = [];
+    for (let i = 0; i < c.length; i += 2) feats.push([c[i].s0, c[i + 1].s1]);
+    for (let i = 1; i < feats.length; i++) assert.ok(feats[i][0] - feats[i - 1][1] > 1500, `seed ${seed}: straight before feature ${i} too short`);
+    const time = cleanLap(t);
+    assert.ok(time > 90 && time < 140, `seed ${seed}: clean run takes ${time.toFixed(0)} s`);
+  }
 });
 
 // ---------- look ----------
