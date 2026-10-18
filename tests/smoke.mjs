@@ -138,6 +138,27 @@ await check('traffic crashes happen and a Döner heals', async () => {
   expect(s.crashed.stats.crashes > 0, 'a minute of flat-out driving through traffic should hit something');
 });
 
+await check('traffic you hit is shoved forward and knocked sideways', async () => {
+  await open('?screen=race&players=1&seed=7&skip=1&pause=1');
+  const s = await game(() => {
+    const d = window.__game.debug;
+    // a car in lane 3 well into the race: rear-end it hard, rendering every frame of the crash
+    const c = d.traffic(6000, 3000).find((v) => v.type === 'car' && v.lane === 3);
+    d.teleport(0, c.y - 40, c.x); d.set(0, { v: 180 }); d.setInput(0, {});
+    for (let i = 0; i < 40; i++) d.step(1);
+    const rear = d.traffic(c.y, 200).find((v) => v.id === c.id);
+    // then pull alongside a car in lane 2 and steer into it
+    const b = d.traffic(9000, 3000).find((v) => v.type === 'car' && v.lane === 2);
+    d.teleport(0, b.y, 164); d.set(0, { v: b.v, hp: 100 }); d.setInput(0, { steer: -1 });
+    let kx = 0;
+    for (let i = 0; i < 30; i++) { d.step(1); kx = Math.min(kx, d.traffic(b.y, 300).find((v) => v.id === b.id).kx); }
+    return { rear, kx, p: d.snapshot().race.players[0] };
+  });
+  expect(s.rear.dy > 10, `rear-ended car was not shoved forward (dy ${s.rear.dy})`);
+  expect(s.kx < -3, `side-swiped car was not knocked sideways (kx ${s.kx})`);
+  expect(s.p.stats.crashes >= 2, `expected two crashes, got ${s.p.stats.crashes}`);
+});
+
 await check('finish line, then the results screen', async () => {
   await open('?screen=race&players=2&seed=7&skip=1&pause=1');
   const s = await game(() => {

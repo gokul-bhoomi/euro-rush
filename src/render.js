@@ -268,6 +268,10 @@ export function drawWorld(race, camY, now, fx, opt = {}) {
       if (e > 0.9) continue;
       G.save(); G.globalAlpha = 1 - e / 0.9; G.translate(x + v.spin * e * 50, top + v.h / 2); G.rotate(v.spin * e * 7);
       vehicle(v, 0, -v.h / 2); G.restore();
+    } else if (v.wob > 0 || v.kvx) {
+      // knocked by a crash: a decaying wobble plus the nose turning the way it is being pushed
+      const e = 0.8 - v.wob, rot = (v.wob > 0 ? (v.wdir || 0) * v.wamp * Math.exp(-e * 3) * Math.sin(e * 14) : 0) + Math.atan2(v.kvx, Math.max(40, v.v + v.dvy)) * 0.6;
+      G.save(); G.translate(Math.round(x), top + v.h / 2); G.rotate(rot); vehicle(v, 0, -v.h / 2); G.restore();
     } else vehicle(v, x, top);
   }
   // speed streaks: road-anchored, longer and brighter the faster the viewer goes

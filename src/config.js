@@ -22,6 +22,8 @@ export const TUNE = {
   sidewalkMax: 55, overspeedDecel: 90,
   boostMax: 260, boostTime: 3, boostKick: 30,
   knockDecay: 0.02,                    // fraction of sideways knock-back left after 1s
+  // traffic that gets hit: a forward shove that fades out (1/s) and a sideways knock on a spring back to its lane
+  shoveDecay: 1.5, knockSpring: 40, knockDamp: 9, knockMax: 9, bounce: 0.2,
   towTime: 2.5, towPenalty: 10, towHp: 60, invuln: 2,
   hitCd: 0.4, bumpCd: 0.8, finishGrace: 30,
 };
@@ -29,7 +31,9 @@ export const TUNE = {
 export const DMG = {
   headOn: 10, headOnK: 0.1, sideSwipe: 0.5,  // oncoming: base + k*closing speed; glancing hits halve it
   rearEnd: 3, rearEndK: 0.12, nudge: 12,   // nose-to-tail below 12px/s closing speed does no damage
-  sideScrape: 3, works: 12, wall: 4,     // wall = sliding into the buildings
+  sideScrape: 2, sideScrapeK: 0.06,     // side scrape: closing = sideways speed + 0.3 * speed difference
+  maxHit: 60,                           // traffic hits scale with the other vehicle's size; one crash never wrecks a full car
+  works: 12, wall: 4,                   // wall = sliding into the buildings
   bumpVictim: 6, bumpRammer: 3, rearBump: 3,
 };
 
