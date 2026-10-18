@@ -1,25 +1,31 @@
 ---
 name: verify
-description: Verify a change to the Euro Rush game actually works - run the simulation unit tests, launch the game in the browser pane, drive it through its debug API (menus, driving, crashes, bumps, snacks, towing, finish, pause), check for console errors, take screenshots, and report what passed and what could not be checked. Use after any change to euro-rush/ and before telling the user something works.
+description: Verify a change to the Euro Rush game actually works - run the simulation unit tests, launch the game in the browser pane, drive it through its debug API (menus, driving, crashes, bumps, snacks, towing, finish, pause), check for console errors, take screenshots, and report what passed and what could not be checked. Use after any change to the game, before every commit, and before telling the user something works.
 ---
 
 # Verify Euro Rush
 
-The game lives in `euro-rush/` (plain ES modules, no build step). `src/sim.js` + `src/track.js` are pure and deterministic, so you test logic in Node. Everything else is checked in the browser pane through `window.__game.debug`.
+The game is this repo (plain ES modules, no build step; run commands from the repo root). `src/sim.js` + `src/track.js` are pure and deterministic, so you test logic in Node. Everything else is checked in the browser pane through `window.__game.debug`.
 
 Do every step below, in order, unless it clearly cannot be affected by the change. Never report a step as passed that you did not run.
 
-## 1. Unit tests
+## 1. Automated checks (required before every commit)
 
 ```bash
-cd euro-rush && npm test
+npm install      # once: installs playwright-core and turns on the pre-commit hook
+npm run verify   # unit tests (tests/sim.test.js) + headless-Chrome smoke test (tests/smoke.mjs)
 ```
 
-All tests must pass. If you changed or added rules in `sim.js` / `track.js` (damage, speeds, pickups, bumps, finishing), **add or update a test in `tests/sim.test.js` first** and make sure it fails without your change.
+Both must pass. The pre-commit hook (`.githooks/pre-commit`) runs the same checks and blocks the commit if they fail, and GitHub Actions (`.github/workflows/verify.yml`) runs them on every push and pull request. Never bypass them with `--no-verify`.
+
+- Changed or added rules in `sim.js` / `track.js` (damage, speeds, pickups, bumps, finishing, curves)? **Add or update a test in `tests/sim.test.js` first** and make sure it fails without your change.
+- Added a screen, menu flow or visible feature? **Add a check to `tests/smoke.mjs`** that drives it through the debug API. Note that `d.step(n)` renders only once, after the n steps, so step one frame at a time to exercise drawing at many positions.
+
+The smoke test cannot judge how things look, so for visual changes also do the manual steps below.
 
 ## 2. Launch
 
-- `preview_start` with name `euro-rush` (defined in `.claude/launch.json`; serves `euro-rush/` on port 5173).
+- `preview_start` with name `euro-rush` (defined in `.claude/launch.json`; serves the repo on port 5173).
 - Game: `http://localhost:5173/`. UI mockup (design reference only): `http://localhost:5173/mockup/`.
 - Useful URL params: `?screen=race&players=2&seed=7&skip=1` (start a race straight away, fixed seed, no countdown), `&players=1` (solo), `&pause=1` (start with the sim frozen), `?screen=tracks`, `?screen=results`.
 
@@ -35,7 +41,7 @@ d.setInput(0, { gas: true, steer: -1 });  // override P1 driving input (P2 = 1);
 d.clearInput();
 d.press('confirm', 0);              // one-shot menu press: up/down/left/right/confirm/back/start/pause, for player 0 or 1
 d.startRace({ players: 2, seed: 7, skipCountdown: true });
-d.teleport(0, 29900);               // move P1 to world y (and optional x)
+d.teleport(0, 19900);               // move P1 to road distance y (and optional x)
 d.set(1, { hp: 5 });                // poke any player field
 d.pickups(); d.works();             // untaken pickups / construction zones of the current race
 d.noTraffic();                      // remove all traffic from the current race (speed/visual checks)

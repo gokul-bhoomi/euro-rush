@@ -55,9 +55,14 @@ Both players race at the same time. **The fastest time to the finish wins.** Onc
 
 ## For developers
 
+You need Node 18+ and Google Chrome.
+
 ```bash
-npm test        # unit tests for the race simulation (Node 18+)
+npm install      # once: installs the test tool and turns on the pre-commit hook
+npm run verify   # unit tests + a headless-Chrome smoke test that plays through the game
 ```
+
+**Every commit must pass `npm run verify`.** The pre-commit hook runs it automatically and blocks the commit if anything fails. GitHub Actions runs it again on every push and pull request. Changed a game rule? Add a test in `tests/sim.test.js`. Added a screen or feature? Add a check in `tests/smoke.mjs`. If you use Claude Code, run the `verify` skill before committing.
 
 - `src/sim.js`: the race rules (pure and deterministic).
 - `src/track.js`: track generation and road path.
