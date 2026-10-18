@@ -4,7 +4,9 @@ Two-player split-screen retro racer: plain browser ES modules with no build step
 
 ## Before every commit: run the verify skill
 
-Run the `verify` skill (`.claude/skills/verify/SKILL.md`) after any change and **before every commit**. At a minimum, `npm run verify` (unit tests + headless-Chrome smoke test) must pass. The pre-commit hook and GitHub Actions enforce this. Never commit with `--no-verify`, and never push a red build to `main`.
+Run the `verify` skill (`.claude/skills/verify/SKILL.md`) after any change and **before every commit**. At a minimum, `npm run verify` (unit tests + headless-Chrome smoke test) must pass. The pre-commit hook and GitHub Actions enforce this. Never commit with `--no-verify`.
+
+`main` is protected, so nobody can push to it directly, admins included. Work on a branch, push it, open a pull request, and merge once the `verify` check is green. Merging to `main` publishes the game, because GitHub Pages serves `main`.
 
 - New or changed game rules (`src/sim.js`, `src/track.js`) need a test in `tests/sim.test.js`.
 - New screens or features need a check in `tests/smoke.mjs`.
