@@ -131,7 +131,7 @@ function drawRaceScreen() {
     ctx.save(); ctx.translate(ox + sh[0], sh[1]); ctx.beginPath(); ctx.rect(-sh[0], -sh[1], HW, H); ctx.clip();
     if (i < n) {
       const p = race.players[i];
-      drawWorld(race, p.y, S.clock, S.fx, { speed: p.v, shift: Math.max(0, Math.min(1, (p.v - 130) / 90)) * 12 });
+      drawWorld(race, p.y, S.clock, S.fx, { viewer: p.id, speed: p.v, shift: Math.max(0, Math.min(1, (p.v - 130) / 90)) * 12 });
       drawBanner(p, race);
       drawHud(i, p, race, n > 1 ? rank(race, p) : 0);
     } else drawSoloPanel(S.now);

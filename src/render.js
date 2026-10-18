@@ -344,7 +344,10 @@ export function drawWorld(race, camY, now, fx, opt = {}) {
   const look = CAM_Y - VIEW_Y + (opt.shift || 0);
   ax /= 9; ay /= 9;
   // look less far when heading down the screen, so the car stays clear of the HUD
-  const camX = Math.round(c0p.x + ax * look * 0.55), camYm = Math.round(c0p.y + ay * look * (ay < 0 ? 0.55 : 1));
+  // The world scrolls in whole pixels (camX/camYm). The viewer's own car is placed from the exact camera
+  // instead: rounding both separately made it jitter a pixel back and forth in turns.
+  const rawX = c0p.x + ax * look * 0.55, rawY = c0p.y + ay * look * (ay < 0 ? 0.55 : 1);
+  const camX = Math.round(rawX), camYm = Math.round(rawY);
   const toScr = (q) => [HW / 2 + (q.x - camX), VIEW_Y - (q.y - camYm)];
 
   // which stretch of road is on screen (a switchback can bring a later leg into view)
@@ -440,15 +443,15 @@ export function drawWorld(race, camY, now, fx, opt = {}) {
     if (!v.gone && v.v < 0 && vy > sv && vy < sv + 500) vis.push([v, vy]);
     if (vy - v.h / 2 > wTop || vy + v.h / 2 < wBot) continue;
     const x = vehX(T, v, vy);
-    const place = (s, fn) => {
-      const q = at(s, x);
+    const place = (s, rot, fn) => {
+      const q = at(s, x), a = snapA(q.a + rot);
       if (q.x < -60 || q.x > HW + 60 || q.y < -60 || q.y > H + 60) return;
-      G.save(); G.translate(Math.round(q.x), Math.round(q.y)); if (q.a) G.rotate(q.a); fn(); G.restore();
+      G.save(); G.translate(Math.round(q.x), Math.round(q.y)); if (a) G.rotate(a); fn(); G.restore();
     };
     if (v.gone) {
       const e = t - v.goneAt;
       if (e > 0.9) continue;
-      place(vy, () => { G.globalAlpha = 1 - e / 0.9; G.translate(v.spin * e * 50, 0); G.rotate(v.spin * e * 7); vehicle(v, 0, -v.h / 2); });
+      place(vy, 0, () => { G.globalAlpha = 1 - e / 0.9; G.translate(v.spin * e * 50, 0); G.rotate(v.spin * e * 7); vehicle(v, 0, -v.h / 2); });
       continue;
     }
     // knocked by a crash (vy and x already include the shove and the sideways knock): a decaying wobble
@@ -456,8 +459,8 @@ export function drawWorld(race, camY, now, fx, opt = {}) {
     const e = 0.8 - v.wob, rot = v.v < 0 ? 0 : (v.wob > 0 ? (v.wdir || 0) * v.wamp * Math.exp(-e * 3) * Math.sin(e * 14) : 0) + Math.atan2(v.kvx || 0, Math.max(40, v.v + (v.dvy || 0))) * 0.6;
     if (v.type === 'tram') for (let k = 0; k < 3; k++) {
       const d = v.h / 2 - k * 30 - 14; // section centre ahead of the tram's centre: the whole tram turns about its middle
-      place(vy + d, () => { if (rot) { G.translate(d * Math.sin(rot), 0); G.rotate(rot); } tramSeg(0, -14, k); });
-    } else place(vy, () => { if (rot) G.rotate(rot); vehicle(v, 0, -v.h / 2); });
+      place(vy + d, rot, () => { if (rot) G.translate(Math.round(d * Math.sin(rot)), 0); tramSeg(0, -14, k); });
+    } else place(vy, rot, () => vehicle(v, 0, -v.h / 2));
   }
   // oncoming traffic about to come into view: red marker at the edge of the screen
   if (mod(now * 6, 2) < 1.4) for (const [v, vy] of vis) {
@@ -468,7 +471,11 @@ export function drawWorld(race, camY, now, fx, opt = {}) {
   // flashing <<< / >>> while a hairpin is coming up for the viewer
   const nb = (T.curves || []).find((c) => c.kind === 'hairpin' && c.s0 > sv && c.s0 - sv < 700);
   if (nb && mod(now * 4, 2) < 1.3) { txt(nb.k < 0 ? '<<<' : '>>>', 116, 40, '#ffd000', 'center', 16, '#222'); txt('HAIRPIN', 116, 58, '#ffd000', 'center', 8, '#222'); }
-  if (!opt.noPlayers) for (const p of race.players) drawPlayer(p, now, at(p.y, p.x));
+  if (!opt.noPlayers) for (const p of race.players) {
+    if (p.id !== opt.viewer) { drawPlayer(p, now, at(p.y, p.x)); continue; }
+    const q = roadPos(T, p.y, p.x);
+    drawPlayer(p, now, { x: HW / 2 + q.x - rawX, y: VIEW_Y - (q.y - rawY), a: q.a });
+  }
 
   const onRoad = (s, fn) => {
     const q = at(s);
@@ -509,6 +516,12 @@ function bendSign(x, y, dir) {
   for (let r = -2; r <= 2; r++) R(x - 1 + dir * (1 - Math.abs(r)), y + r, 2, 1, '#111'); // chevron < or >
 }
 
+// Sprites turn in 64 fixed steps (5.6 degrees), like the pre-rotated sprites of old top-down racers.
+// Redrawn at a slightly new angle every frame, pixel art sparkles: in a hairpin up to 60% of a car's
+// pixels changed from one frame to the next.
+const A_STEP = Math.PI / 32;
+const snapA = (a) => Math.round(a / A_STEP) * A_STEP;
+
 function warn(x, y = 37) { G.fillStyle = '#e8402e'; for (let i = 0; i < 5; i++) G.fillRect(Math.round(x - 5 + i), Math.round(y) + i, 11 - i * 2, 1); R(x - 1, y + 7, 2, 2, '#e8402e'); }
 
 // q = the car's screen position and the road heading there; everything is drawn in the car's frame
@@ -519,7 +532,7 @@ function drawPlayer(p, now, q) {
   // the car points where it is going; drifting, the nose turns a little into the curve
   const yaw = Math.atan2(p.lat + p.vx, Math.max(p.v, 40)) * 0.6;
   const rot = q.a + yaw + (p.wobble > 0 ? 0.55 * Math.exp(-k * 2.5) * Math.sin(k * 14) : 0) + (drifting ? Math.max(-0.3, Math.min(0.3, p.slip * 0.004)) : 0);
-  G.save(); G.translate(Math.round(q.x), Math.round(q.y)); if (rot) G.rotate(rot);
+  G.save(); G.translate(Math.round(q.x), Math.round(q.y)); const ra = snapA(rot); if (ra) G.rotate(ra);
   if (p.boost > 0 && p.tow <= 0) {
     for (let j = 0; j < 5; j++) R(-8 + j * 4, 15 + mod(now * 90 + j * 7, 14), 1, 6 + (j % 3) * 3, 'rgba(255,255,255,.7)');
     disc(0, 16, 2 + (mod(now * 20, 2) < 1 ? 1 : 0), '#ffb030');
