@@ -155,6 +155,29 @@ await check('finish line, then the results screen', async () => {
   await page.screenshot({ path: join(SHOTS, 'results.png') });
 });
 
+await check('Italia: every part of the track renders, a croissant heals, and the race ends at the Colosseo', async () => {
+  await open('?screen=race&track=italia&players=2&seed=7&skip=1&pause=1');
+  const s = await game(() => {
+    const d = window.__game.debug, L = d.snapshot().race.length;
+    let frames = 0;
+    for (let s = 0; s < L + 200; s += 200) {
+      d.teleport(0, s, 164); d.teleport(1, Math.max(0, s - 700), 132); d.set(0, { v: 150 }); d.set(1, { v: 150 });
+      d.step(1); frames++;
+    }
+    d.startRace({ players: 2, seed: 7, track: 'italia', skipCountdown: true }); d.noTraffic();
+    const k = d.pickups().find((p) => p.kind === 'croissant');
+    d.teleport(0, k.y - 60, k.x); d.set(0, { hp: 50, v: 60 }); d.setInput(0, { gas: true }); d.step(60);
+    const healed = d.snapshot().race.players[0];
+    d.teleport(0, L - 60, 164); d.teleport(1, L - 60, 132); d.setInput(1, { gas: true });
+    d.step(450);
+    return { frames, healed, track: d.snapshot().race.track, screen: d.snapshot().screen };
+  });
+  expect(s.frames > 100, `only rendered ${s.frames} frames`);
+  expect(s.healed.stats.snacks === 1 && s.healed.hp === 65, `croissant not taken: hp ${s.healed.hp}`);
+  expect(s.track === 'italia' && s.screen === 'results', `expected Italia results, got ${s.track} ${s.screen}`);
+  await page.screenshot({ path: join(SHOTS, 'italia-results.png') });
+});
+
 // ---------- design intent: decisions the owner made (see tests/intent.test.js for the rules) ----------
 const tap = async (key) => { await page.keyboard.down(key); await game(() => window.__game.debug.step(1)); await page.keyboard.up(key); await game(() => window.__game.debug.step(1)); };
 const hold = async (keys, frames) => { for (const k of keys) await page.keyboard.down(k); await game((n) => window.__game.debug.step(n), frames); for (const k of keys) await page.keyboard.up(k); };
@@ -217,14 +240,15 @@ await check('intent: Esc pauses and freezes the race clock', async () => {
   expect(s.paused && s.race.t === t0, 'race kept running while paused');
 });
 
-await check('intent: Italia is shown but locked (coming soon); Berlin is the playable track', async () => {
+await check('intent: both tracks are playable - Berlin on the left, Italia on the right', async () => {
   await open('?screen=tracks&pause=1');
   await tap('KeyD'); await tap('Space');
   let s = await snap();
-  expect(s.screen === 'tracks' && s.trackSel === 1, `choosing Italia left the track screen (${s.screen})`);
-  await tap('KeyA'); await tap('Space');
+  expect(s.screen === 'race' && s.race.track === 'italia' && s.race.length === 21000, `Italia did not start (${s.screen}, ${s.race?.track})`);
+  await open('?screen=tracks&pause=1');
+  await tap('Space');
   s = await snap();
-  expect(s.screen === 'race' && s.race.length === 20000, 'Berlin did not start');
+  expect(s.screen === 'race' && s.race.track === 'berlin' && s.race.length === 20000, 'Berlin did not start');
 });
 
 await check('intent: there is music and sound - menu music, race music, M mutes', async () => {

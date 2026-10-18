@@ -10,9 +10,9 @@ Run the `verify` skill (`.claude/skills/verify/SKILL.md`) after any change and *
 
 ## Design intent: don't drift from what the owner asked for
 
-`tests/intent.test.js` and the `intent:` checks in `tests/smoke.mjs` lock in the owner's design decisions: both players race at once in split-screen, time to finish (with penalties) decides the winner, towing costs +10 s, oncoming lanes are emptier but faster with traffic in both lanes, construction only closes oncoming lanes, Berlin snacks are Brezel/Döner plus espresso, 330 km/h top speed that is hard to reach, a short race of about 2 minutes, a few hairpin switchbacks instead of lots of bends, mild drift, the Riviera Pop palette from the mockup, WASD/arrow/gamepad controls, Italia locked as "coming soon", and music + sound with M to mute.
+`tests/intent.test.js` and the `intent:` checks in `tests/smoke.mjs` lock in the owner's design decisions: both players race at once in split-screen, time to finish (with penalties) decides the winner, towing costs +10 s, oncoming lanes are emptier but faster with traffic in both lanes, construction only closes oncoming lanes, Berlin snacks are Brezel/Döner and Italia snacks croissant/pizza, plus espresso, 330 km/h top speed that is hard to reach, a short race of about 2 minutes, a few hairpin switchbacks instead of lots of bends, mild drift, the Riviera Pop palette from the mockup, WASD/arrow/gamepad controls, two playable tracks (Berlin, and Italia from the Amalfi coast to the Colosseo, added at the owner's request on 2026-10-18), and music + sound with M to mute.
 
-**If an intent test fails, your change goes against a design decision.** Don't edit or delete the test to make it pass. Stop and ask the owner. Change the test only after they agree, and say in the commit/PR which decision changed. Not built yet on purpose (don't add these without asking): the Italia track, other countries, speed cameras/penalties, ghost or take-turns mode, horn, online play.
+**If an intent test fails, your change goes against a design decision.** Don't edit or delete the test to make it pass. Stop and ask the owner. Change the test only after they agree, and say in the commit/PR which decision changed. Not built yet on purpose (don't add these without asking): other countries, speed cameras/penalties, ghost or take-turns mode, horn, online play.
 
 ## Tests for new work
 
@@ -23,7 +23,7 @@ Run the `verify` skill (`.claude/skills/verify/SKILL.md`) after any change and *
 ## Layout
 
 - `src/sim.js`: race rules. Pure and deterministic, with a fixed 1/60 s step.
-- `src/track.js`: the seeded Berlin track and its road path (hairpins, sweepers).
+- `src/track.js`: the seeded Berlin and Italia tracks and their road path (hairpins, sweepers).
 - `src/render.js`, `src/screens.js`: drawing on a 480x270 canvas.
 - `src/audio.js`: WebAudio music and sound.
 - `src/input.js`: gamepads and keyboard.

@@ -28,7 +28,7 @@ The smoke test cannot judge how things look, so for visual changes also do the m
 
 - `preview_start` with name `euro-rush` (defined in `.claude/launch.json`; serves the repo on port 5173).
 - Game: `http://localhost:5173/`. UI mockup (design reference only): `http://localhost:5173/mockup/`.
-- Useful URL params: `?screen=race&players=2&seed=7&skip=1` (start a race straight away, fixed seed, no countdown), `&players=1` (solo), `&pause=1` (start with the sim frozen), `?screen=tracks`, `?screen=results`.
+- Useful URL params: `?screen=race&players=2&seed=7&skip=1` (start a race straight away, fixed seed, no countdown), `&players=1` (solo), `&pause=1` (start with the sim frozen), `&track=italia` (race or preselect Italia), `?screen=tracks`, `?screen=results`.
 
 ## 3. Drive it through the debug API
 
@@ -41,7 +41,7 @@ d.step(60);                         // advance exactly 60 sim steps (1 s) and re
 d.setInput(0, { gas: true, steer: -1 });  // override P1 driving input (P2 = 1); null to release
 d.clearInput();
 d.press('confirm', 0);              // one-shot menu press: up/down/left/right/confirm/back/start/pause, for player 0 or 1
-d.startRace({ players: 2, seed: 7, skipCountdown: true });
+d.startRace({ players: 2, seed: 7, skipCountdown: true, track: 'italia' }); // track defaults to the one selected
 d.teleport(0, 19900);               // move P1 to road distance y (and optional x)
 d.set(1, { hp: 5 });                // poke any player field
 d.pickups(); d.works();             // untaken pickups / construction zones of the current race
@@ -51,21 +51,21 @@ d.snapshot();                       // JSON: screen, paused, joined, audio, fx t
 __game.errors;                      // uncaught errors from the game loop - must be []
 ```
 
-World units: pixels. Positions are road coordinates: `y` = distance along the road, `x` = across it, lane centres always x = 68, 100 (oncoming), 132, 164 (our side), even in turns. The renderer bends the road onto a north-up map (`d.pos`). Track length is `snapshot().race.length` (20000, 5.6 km). Speeds are px/s (HUD km/h = x1.5). Top speed is 220 = 330 km/h and is meant to be hard to reach: ~170 (255 km/h) after 6 s of gas, the full 220 only after ~20 s without a crash; espresso allows 260 (390 km/h). Near top speed the view shows speed streaks, a light rumble, the camera pulls back 12px and the km/h readout flashes.
+World units: pixels. Positions are road coordinates: `y` = distance along the road, `x` = across it, lane centres always x = 68, 100 (oncoming), 132, 164 (our side), even in turns. The renderer bends the road onto a north-up map (`d.pos`). Track length is `snapshot().race.length` (Berlin 20000 = 5.6 km, Italia 21000 = 5.9 km). Speeds are px/s (HUD km/h = x1.5). Top speed is 220 = 330 km/h and is meant to be hard to reach: ~170 (255 km/h) after 6 s of gas, the full 220 only after ~20 s without a crash; espresso allows 260 (390 km/h). Near top speed the view shows speed streaks, a light rumble, the camera pulls back 12px and the km/h readout flashes.
 
 ### Scenarios (run the ones the change could touch; run all for big changes)
 
 Use `javascript_exec` with `await` and return `d.snapshot()` so the result is visible. Check the numbers, not just "no error".
 
 1. **Boot**: load `/`, wait ~1.5 s. Expect `screen: 'title'`, `__game.errors` empty, no errors in `read_console_messages`.
-2. **Menus**: `press('confirm',1)` → `joined: [true,true]`; `press('confirm',0)` → `screen: 'tracks'`; `press('right')` + `press('confirm')` → still `tracks` (Italia is locked); `press('left')` + `press('confirm')` → `screen: 'race'`, `phase: 'countdown'`; `step(200)` → `phase: 'race'`. `press('back')` on tracks → title.
+2. **Menus**: `press('confirm',1)` → `joined: [true,true]`; `press('confirm',0)` → `screen: 'tracks'`; `press('right')` + `press('confirm')` → `screen: 'race'` with `race.track: 'italia'`; back on tracks, `press('left')` + `press('confirm')` → Berlin, `phase: 'countdown'`; `step(200)` → `phase: 'race'`. `press('back')` on tracks → title.
 3. **Driving**: for speed checks remove traffic: `d.startRace({players:1, seed:7, skipCountdown:true}); d.noTraffic(); d.setInput(0,{gas:true})`, then sample `v` every `step(60)`. Expect ~255 km/h at 6 s and 330 km/h only after ~20 s of gas. Steer left for 5 s at speed → `x` hits 40 and `v` ≤ 55 (sidewalk slows you down gradually).
 4. **Oncoming traffic**: seed 7, P1 gas + steer into lane 0 (`d.set(0,{x:68})` each few steps or `setInput(0,{gas:true, steer:-1})` then neutral), step ~20 s → `stats.crashes` > 0 and `hp` < 100; the HUD HP bar and `-N HP` pop show in a screenshot.
 5. **Bump**: `d.set(0,{x:150,y:500,v:100}); d.set(1,{x:162,y:500,v:100}); d.setInput(0,{gas:true,steer:1}); d.step(1)` → `snapshot().fx` contains `'BUMP!'`, P2 `hp` 94, P1 `hp` 97, P1 `stats.bumps` 1.
 6. **Tow**: `d.set(0,{hp:1})` then cause any crash → `tow` > 0, `penalty` 10, `stats.towed` 1; `step(160)` → `hp` 60.
 7. **Snacks / espresso**: `d.pickups()` lists untaken pickups `{kind, lane, x, y}`; teleport 60px behind one in its lane (`d.teleport(0, k.y-60, k.x)`), gas, `step(60)` → `stats.snacks` or `stats.espressos` +1, `hp` up (Brezel +15, Döner +30) or `boost` > 0 for espresso. `d.works()` lists construction zones.
 8. **Finish + results**: `const L=d.snapshot().race.length; d.teleport(0,L-50); d.teleport(1,L-50); setInput both gas; step(300)` → both have `finish`, `phase: 'done'`, then `step(150)` → `screen: 'results'`. Screenshot it. Solo: `players:1` gives "NICE RUN!".
-9. **Hairpins & drift**: Berlin has two switchbacks (two 180° hairpins each, legs side by side, through a park with no buildings) and two pairs of gentle sweepers. Sweepers are flat out (no drift at 330 km/h). Hairpins: lane 3 on the inside is safe at ~120 km/h, slides a bit at ~150, and much faster slides across to the outer wall/kerb (kerb limit 165 km/h); the outside line holds ~225 km/h. Check: `d.noTraffic()`, `h = d.curves().filter(c=>c.kind==='hairpin')[0]`, put P1 at `h.s0-250` lane 3 with `v:180` + gas and P2 at `h.s0-150` in lane **2** (same lane = they bump), `step(6)` at a time logging `drift`/`x`/`v`. Screenshot mid-turn: the road must form a U around a green island with red/white kerbs, no gaps or seams in the slices, cars rotated along the road, `<<<`/`>>>` + HAIRPIN warning while one is <700px ahead, two yellow signs before it. Step on to the return leg: the car drives down the screen pointing down and stays clear of the HUD. Also check a sweeper (road and buildings at an angle) and the finish gate. FPS with both views in hairpins should stay at display rate (count rAF over 2s).
+9. **Hairpins & drift**: Berlin has two switchbacks (two 180° hairpins each, legs side by side, through a park with no buildings) and two pairs of gentle sweepers. Sweepers are flat out (no drift at 330 km/h). Hairpins: lane 3 on the inside is safe at ~120 km/h, slides a bit at ~150, and much faster slides across to the outer wall/kerb (kerb limit 165 km/h); the outside line holds ~225 km/h. Check: `d.noTraffic()`, `h = d.curves().filter(c=>c.kind==='hairpin')[0]`, put P1 at `h.s0-250` lane 3 with `v:180` + gas and P2 at `h.s0-150` in lane **2** (same lane = they bump), `step(6)` at a time logging `drift`/`x`/`v`. Screenshot mid-turn: the road must form a U around a green island with red/white kerbs, no gaps or seams in the slices, cars rotated along the road, `<<<`/`>>>` + HAIRPIN warning while one is <700px ahead, two yellow signs before it. Step on to the return leg: the car drives down the screen pointing down and stays clear of the HUD. Also check a sweeper (road and buildings at an angle) and the finish gate. Traffic is drawn at its map position, so cars in a hairpin keep their size and turn with the road, and a tram bends section by section. **Italia** (`track: 'italia'`) has three switchbacks through green hills and one pair of sweepers along the coast: check the sea + promenade on the left and cliff houses/lemon trees on the right, the Leaning Tower halfway, Rome (ochre buildings, Colosseum) on the last stretch and the SPQR arch at the finish. FPS with both views in hairpins should stay at display rate (count rAF over 2s).
 10. **Pause**: `press('pause')` in a race → `paused: true` and sim time stops advancing; `press('confirm')` resumes.
 
 ## 4. Look at it
