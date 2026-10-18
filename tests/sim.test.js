@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRace, stepRace, rank } from '../src/sim.js';
-import { makeBerlin, makeItalia, vehX, roadPos, pathOf, curvAt, HAIRPIN_R } from '../src/track.js';
-import { TUNE, STEP, laneX, VEH, HEAL } from '../src/config.js';
+import { makeBerlin, makeItalia, vehX, vehY, roadPos, pathOf, curvAt, HAIRPIN_R } from '../src/track.js';
+import { TUNE, DMG, STEP, laneX, VEH, HEAL } from '../src/config.js';
 
 const emptyTrack = (extra = {}) => ({ seed: 1, length: 3000, km: 1, works: [], pickups: [], vehicles: [], monuments: [], ...extra });
 const veh = (id, lane, y0, v, type = 'car') => ({ id, lane, y0, v, type, c: '#fff', ...VEH[type] });
@@ -49,9 +49,105 @@ test('rear-ending slow traffic costs HP and keeps you behind it', () => {
   const r = racing(emptyTrack({ length: 99999, vehicles: [veh(0, 3, 200, 40)] }));
   run(r, [GAS], 6);
   const p = r.players[0];
-  assert.ok(p.hp < 100 && p.hp > 80, `hp ${p.hp}`);
-  assert.ok(p.y < 200 + 40 * 6, 'still behind the car');
+  // holding the gas you keep bumping it as it gets shoved away and settles back to its speed
+  assert.ok(p.hp < 100 && p.hp > 70, `hp ${p.hp}`);
+  assert.ok(p.y < vehY(r.veh[0], r.t), 'still behind the car');
   assert.ok(p.stats.crashes >= 1);
+});
+
+// One hit at a fixed closing speed: P1 placed just behind (or beside) a single vehicle.
+function hitOnce(type, { v = 150, lane = 3, side = false, speed = 40 } = {}) {
+  const r = racing(emptyTrack({ length: 99999, vehicles: [veh(0, 3, 300, speed, type)] }));
+  const p = r.players[0], car = r.veh[0];
+  if (side) { p.x = laneX(2) + 1; p.y = 300; p.v = speed; }
+  else { p.x = laneX(lane); p.y = 300 - (car.h + 26) / 2 - 1; p.v = v; }
+  const inp = side ? [{ steer: 1 }] : [{}];
+  let kxMax = 0;
+  for (let i = 0; i < 45; i++) { stepRace(r, inp, STEP); kxMax = Math.max(kxMax, car.kx); }
+  return { r, p, car, dmg: 100 - p.hp, kxMax };
+}
+
+test('a rear-ended car is shoved forward, then settles back to its lane speed', () => {
+  const { r, car, dmg } = hitOnce('car');
+  assert.ok(dmg > 0, 'it hurt');
+  assert.ok(car.dvy > 0, 'moving faster than its lane speed right after the hit');
+  run(r, [{ brake: true }], 3);
+  assert.ok(car.dy > 30, `pushed ahead of where it would have been: dy ${car.dy}`);
+  assert.ok(Math.abs(car.dvy) < 1 && r.knocked.length === 0, 'back to lane speed');
+});
+
+test('a side-swiped car is knocked sideways, wobbles, and springs back into its lane', () => {
+  const { r, car, kxMax, p } = hitOnce('car', { side: true });
+  assert.ok(p.stats.crashes === 1 || kxMax > 0, 'contact happened');
+  assert.ok(kxMax > 3, `knocked sideways by ${kxMax}px`);
+  assert.ok(kxMax <= TUNE.knockMax, 'stays near its lane, on the road');
+  assert.ok(car.wob > 0, 'wobbles');
+  run(r, [{ brake: true }], 3);
+  assert.ok(Math.abs(car.kx) < 0.5, `back in lane: kx ${car.kx}`);
+  assert.equal(vehX(r.track, car, 0), laneX(3));
+});
+
+test('heavier traffic moves less when hit: a tram barely budges, a car gets shoved', () => {
+  const car = hitOnce('car'), tram = hitOnce('tram');
+  assert.ok(tram.car.dvy < car.car.dvy / 2, `rear shove: tram ${tram.car.dvy} vs car ${car.car.dvy}`);
+  const carS = hitOnce('car', { side: true }), tramS = hitOnce('tram', { side: true });
+  assert.ok(tramS.kxMax < carS.kxMax / 2, `side knock: tram ${tramS.kxMax} vs car ${carS.kxMax}`);
+});
+
+test('crash damage grows with the size of what you hit and with your closing speed', () => {
+  const car = hitOnce('car').dmg, truck = hitOnce('truck').dmg, tram = hitOnce('tram').dmg;
+  assert.ok(car < truck && truck < tram, `car ${car}, truck ${truck}, tram ${tram}`);
+  const slow = hitOnce('car', { v: 90 }).dmg, fast = hitOnce('car', { v: 210 }).dmg;
+  assert.ok(fast > slow * 1.5, `slow ${slow}, fast ${fast}`);
+  assert.equal(hitOnce('tram', { v: 40 + DMG.nudge - 1 }).dmg, 0, 'a gentle touch is free, even on a tram');
+  // side scrapes scale too
+  assert.ok(hitOnce('truck', { side: true }).dmg > hitOnce('car', { side: true }).dmg);
+});
+
+test('one bad crash never wrecks a full-HP car, and head-ons still hurt the most', () => {
+  const r = racing(emptyTrack({ vehicles: [veh(0, 3, 400, -75, 'truck')] }));
+  const p = r.players[0];
+  p.v = TUNE.boostMax; p.boost = 1;
+  run(r, [GAS], 2);
+  assert.ok(r.veh[0].gone, 'the truck spun off');
+  assert.ok(p.hp > 30 && p.hp < 60, `hp ${p.hp}`);
+  assert.ok(hitOnce('tram', { v: TUNE.boostMax }).dmg <= DMG.maxHit);
+  // at the same speed of ours: head-on with an oncoming car vs rear-ending a car in lane 3
+  const h = racing(emptyTrack({ vehicles: [veh(0, 3, 400, -75)] }));
+  h.players[0].v = 150; run(h, [{}], 3);
+  const rear = hitOnce('car', { v: 150, speed: 66 });
+  assert.ok(100 - h.players[0].hp > (rear.dmg) * 2, `head-on ${100 - h.players[0].hp} vs rear-end ${rear.dmg}`);
+});
+
+test('Italia traffic: a Vespa flies further and hurts less than a bus, a Fiat sits in between', () => {
+  const vespa = hitOnce('vespa'), fiat = hitOnce('fiat'), bus = hitOnce('bus');
+  assert.ok(vespa.car.dvy > fiat.car.dvy && fiat.car.dvy > bus.car.dvy, `shove: vespa ${vespa.car.dvy}, fiat ${fiat.car.dvy}, bus ${bus.car.dvy}`);
+  assert.ok(vespa.dmg < fiat.dmg && fiat.dmg < bus.dmg, `damage: vespa ${vespa.dmg}, fiat ${fiat.dmg}, bus ${bus.dmg}`);
+  assert.ok(vespa.dmg > 0, 'still a crash');
+  const vS = hitOnce('vespa', { side: true }), bS = hitOnce('bus', { side: true });
+  assert.ok(vS.kxMax > bS.kxMax * 2 && vS.kxMax <= TUNE.knockMax, `side knock: vespa ${vS.kxMax}, bus ${bS.kxMax}`);
+  // on the real Italia track, a rear-end into its traffic shoves the vehicle forward
+  const r = racing(makeItalia(7)), p = r.players[0];
+  const v = r.veh.find((u) => u.v > 0 && u.type === 'vespa' && u.y0 > 3000);
+  p.x = laneX(v.lane); p.y = vehY(v, 0) - (v.h + 26) / 2 - 1; p.v = 180;
+  run(r, [{}], 1);
+  assert.ok(v.dy > 20 && p.stats.crashes === 1, `vespa dy ${v.dy}, crashes ${p.stats.crashes}`);
+});
+
+test('a shoved car pushes the one ahead of it instead of driving through it', () => {
+  const r = racing(emptyTrack({ length: 99999, vehicles: [veh(0, 3, 300, 40), veh(1, 3, 334, 40)] }));
+  const p = r.players[0], [a, b] = r.veh;
+  p.y = 300 - 26; p.v = 220;
+  for (let i = 0; i < 180; i++) {
+    stepRace(r, [{ brake: true }], STEP);
+    assert.ok(vehY(b, r.t) - vehY(a, r.t) >= (a.h + b.h) / 2, `overlap at step ${i}`);
+  }
+  assert.ok(b.dy > 0, 'the car ahead got pushed along');
+});
+
+test('traffic knocks are deterministic', () => {
+  const go = () => { const t = makeBerlin(5); const r = racing(t, 2); run(r, [GAS, { gas: true, steer: -0.3 }], 40); return JSON.stringify([r.players, r.veh.map((v) => [v.dy, v.kx, v.gone])]); };
+  assert.equal(go(), go());
 });
 
 test('head-on with oncoming traffic hurts much more than rear-ending', () => {
@@ -101,10 +197,23 @@ test('side bump: the car that steered in is the rammer', () => {
   assert.equal(a.stats.bumps, 1);
   assert.ok(b.v < a.v);
   assert.ok(b.wobble > 0);
+  assert.ok(b.vx > 100 && a.vx < 0 && Math.abs(a.vx) < b.vx, 'the victim is knocked away sideways, harder than the rammer');
   const hp = [a.hp, b.hp];
   a.x = b.x - 10; // still touching during the cooldown: no extra damage
   stepRace(r, [{ gas: true, steer: 1 }, { gas: true }], STEP);
   assert.deepEqual([a.hp, b.hp], hp);
+});
+
+test('nose-to-tail bump: the car in front is shoved on and fishtails sideways', () => {
+  const r = racing(emptyTrack({ length: 99999 }), 2);
+  const [a, b] = r.players;
+  a.x = laneX(3); b.x = laneX(3) + 3; a.y = 100; b.y = 120; a.v = 160; b.v = 80;
+  stepRace(r, [GAS, GAS], STEP);
+  assert.equal(a.stats.bumps, 1);
+  assert.ok(b.v > 80 && b.wobble > 0, 'front car shoved forward');
+  const x0 = b.x;
+  run(r, [GAS, GAS], 0.3);
+  assert.ok(b.x - x0 > 6, `front car slid sideways ${b.x - x0}px`);
 });
 
 test('finishing records time incl. penalty; the other player has 30s grace then DNF', () => {

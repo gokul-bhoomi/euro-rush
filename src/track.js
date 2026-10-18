@@ -145,7 +145,7 @@ export function makeItalia(seed = 1) {
 
 export const TRACKS = { berlin: makeBerlin, italia: makeItalia };
 
-export const vehY = (v, t) => v.y0 + v.v * t;
+export const vehY = (v, t) => v.y0 + v.v * t + (v.dy || 0); // dy = how far a crash shoved it
 
 // Road curvature at distance s (1/px, + = turning right). Eases in and out over each turn's ramp.
 export function curvAt(track, s) {
@@ -188,7 +188,7 @@ export function roadPos(track, s, lx = ROAD_MID) {
 
 // Lateral position; oncoming cars merge into the other oncoming lane around construction.
 export function vehX(track, v, y) {
-  let x = laneX(v.lane);
+  let x = laneX(v.lane) + (v.kx || 0); // kx = sideways knock from a crash
   if (v.v >= 0) return x;
   const other = v.lane === 0 ? 1 : 0;
   for (const w of track.works) {

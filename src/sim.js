@@ -14,8 +14,9 @@ export function createRace(track, nPlayers = 2) {
   }
   return {
     track, t: 0, phase: 'countdown', countdown: 3, players,
-    veh: track.vehicles.map((v) => ({ ...v, gone: false, goneAt: 0, spin: 1 })),
-    taken: new Set(), bumpCd: 0, deadline: null, events: [],
+    // dy/dvy: forward shove from a crash, kx/kvx: sideways knock, wob: wobble timer (see stepTraffic)
+    veh: track.vehicles.map((v) => ({ ...v, gone: false, goneAt: 0, spin: 1, dy: 0, dvy: 0, kx: 0, kvx: 0, wob: 0, wamp: 0 })),
+    knocked: [], taken: new Set(), bumpCd: 0, deadline: null, events: [],
   };
 }
 
@@ -28,6 +29,7 @@ export function stepRace(R, inputs, dt) {
   }
   if (R.phase === 'done') return;
   R.t += dt;
+  stepTraffic(R, dt);
   for (const p of R.players) stepPlayer(R, p, racing(p) ? inputs[p.id] || {} : { brake: true }, dt);
   if (R.players.length > 1) playerBump(R, inputs, dt);
 
@@ -116,8 +118,25 @@ function hurt(R, p, d, kind) {
   R.events.push({ type: 'crash', pid: p.id, kind, dmg: d, x: p.x, y: p.y });
 }
 
+// Mass from footprint, 1 = a player car: a tram weighs ~4 cars, a Vespa a fifth of one.
+const mass = (w, h) => (w * h) / (CAR_W * CAR_H);
+// Damage factor for hitting something of mass m: grows with size but levels off (car 0.9, truck 1.2, tram 1.6).
+const heft = (m) => (2 * m) / (1 + m);
+const trafficHurt = (R, p, base, k, closing, m, kind) => {
+  if (closing >= DMG.nudge) hurt(R, p, Math.min(DMG.maxHit, (base + k * closing) * heft(m)), kind); // gentle touches are free
+};
+
+function knock(R, v, wdir, strength) {
+  // light vehicles wobble more; a tram barely twitches
+  const light = 1 / (1 + mass(v.w, v.h));
+  v.wob = 0.8; v.wamp = Math.min(0.55, Math.min(0.5, strength / 300) * 2 * light * light);
+  v.wdir = wdir;
+  if (!R.knocked.includes(v)) R.knocked.push(v);
+}
+
 function hitTraffic(R, p) {
   if (p.invuln > 0) return;
+  const T = TUNE;
   for (const v of R.veh) {
     if (v.gone) continue;
     const vy = vehY(v, R.t);
@@ -125,29 +144,81 @@ function hitTraffic(R, p) {
     const vx = vehX(R.track, v, vy);
     const o = overlap(p.x, p.y, CAR_W, CAR_H, vx, vy, v.w, v.h);
     if (!o) continue;
+    const m = mass(v.w, v.h), share = m / (1 + m); // share = how much of the hit we take
     if (v.v < 0) {
       // oncoming: the other car spins off the road, we lose most of our speed
       const glancing = o.ox < 6;
-      const d = (DMG.headOn + (p.v - v.v) * DMG.headOnK) * (glancing ? DMG.sideSwipe : 1);
+      const d = Math.min(DMG.maxHit, (DMG.headOn + (p.v - v.v) * DMG.headOnK) * heft(m) * (glancing ? DMG.sideSwipe : 1));
       v.gone = true; v.goneAt = R.t; v.spin = p.x < vx ? 1 : -1;
       p.v *= glancing ? 0.6 : 0.15;
       p.vx = (p.x < vx ? -1 : 1) * 70;
       p.wobble = 0.8;
       hurt(R, p, d, glancing ? 'swipe' : 'headon');
     } else if (o.ox < o.oy) {
+      // side scrape: both get pushed apart, the lighter one further
       const s = p.x < vx ? -1 : 1;
-      p.x += s * o.ox; p.vx = s * 80; p.v *= 0.9;
-      hurt(R, p, DMG.sideScrape, 'scrape');
+      const closing = Math.abs(p.lat + p.vx - v.kvx) + 0.3 * Math.abs(p.v - v.v - v.dvy);
+      const kx = clamp(v.kx - s * o.ox * (1 - share), -T.knockMax, T.knockMax);
+      p.x += s * (o.ox - Math.abs(kx - v.kx)); v.kx = kx;
+      v.kvx -= s * (50 + closing) * (1 - share);
+      p.vx = s * (40 + 60 * share); p.v *= 1 - 0.1 * share - 0.05;
+      knock(R, v, -s, closing);
+      trafficHurt(R, p, DMG.sideScrape, DMG.sideScrapeK, closing, m, 'scrape');
     } else if (p.y < vy) {
-      const rel = Math.max(0, p.v - v.v);
+      // rear-end: momentum goes into the car in front, which gets shoved forward
+      const rel = Math.max(0, p.v - v.v - v.dvy);
       p.y = vy - (v.h + CAR_H) / 2 - 0.5;
-      p.v = Math.min(p.v, v.v * 0.8);
-      if (rel >= DMG.nudge) hurt(R, p, DMG.rearEnd + rel * DMG.rearEndK, 'rear'); // gentle touches are free
+      v.dvy += rel * (1 + T.bounce) * (1 - share);
+      p.v = Math.min(p.v - rel * (1 + T.bounce) * share, v.v + v.dvy);
+      if (rel >= DMG.nudge) p.v = Math.min(p.v, v.v * 0.8); // crunch: we end up slower than the traffic
+      p.v = Math.max(0, p.v);
+      if (rel > 0) knock(R, v, p.x < vx ? 1 : -1, rel);
+      trafficHurt(R, p, DMG.rearEnd, DMG.rearEndK, rel, m, 'rear');
     } else {
-      // traffic ran into us from behind (we were slow)
+      // traffic ran into us from behind (we were slow): it shoves us on and slows down itself
+      const rel = Math.max(0, v.v + v.dvy - p.v);
       p.y = vy + (v.h + CAR_H) / 2 + 0.5;
-      p.v = Math.max(p.v, v.v);
-      hurt(R, p, DMG.rearEnd, 'rear');
+      v.dvy -= rel * (1 + T.bounce) * (1 - share);
+      p.v = Math.max(p.v + rel * (1 + T.bounce) * share, v.v + v.dvy);
+      p.wobble = Math.max(p.wobble, 0.4);
+      if (rel > 0) knock(R, v, p.x < vx ? -1 : 1, rel);
+      trafficHurt(R, p, DMG.rearEnd, DMG.rearEndK, rel, m, 'rear');
+    }
+  }
+}
+
+// Same-direction traffic that got hit: the shove fades out (the driver settles back to lane speed but
+// stays where it was pushed), the sideways knock springs back to the lane centre.
+function stepTraffic(R, dt) {
+  const T = TUNE;
+  for (let i = R.knocked.length - 1; i >= 0; i--) {
+    const v = R.knocked[i];
+    v.dy += v.dvy * dt;
+    v.dvy *= Math.exp(-T.shoveDecay * dt);
+    v.kvx += (-T.knockSpring * v.kx - T.knockDamp * v.kvx) * dt;
+    v.kx = clamp(v.kx + v.kvx * dt, -T.knockMax, T.knockMax);
+    v.wob = Math.max(0, v.wob - dt);
+    keepGap(R, v);
+    if (Math.abs(v.dvy) < 0.5 && Math.abs(v.kx) < 0.2 && Math.abs(v.kvx) < 1 && v.wob === 0) {
+      v.dvy = 0; v.kx = 0; v.kvx = 0;
+      R.knocked.splice(i, 1);
+    }
+  }
+}
+
+// A shoved vehicle never drives into the one ahead of it in its lane: it pushes it along instead,
+// and one that bounced back stops before the one behind.
+function keepGap(R, v) {
+  const y = vehY(v, R.t);
+  for (const u of R.veh) {
+    if (u === v || u.gone || u.lane !== v.lane || u.v < 0) continue;
+    const uy = vehY(u, R.t), gap = Math.abs(uy - y) - (u.h + v.h) / 2 - 2;
+    if (gap >= 0) continue;
+    if (uy > y && v.dvy > 0) {
+      u.dy -= gap; u.dvy = Math.max(u.dvy, v.dvy * 0.6); v.dvy *= 0.4;
+      knock(R, u, 0, v.dvy);
+    } else if (uy < y && v.dvy < 0) {
+      v.dy -= gap; v.dvy = 0;
     }
   }
 }
@@ -199,27 +270,30 @@ function playerBump(R, inputs, dt) {
   if (!o) return;
   let victim = null;
   if (o.ox < o.oy) {
-    // side by side: push apart; whoever steered into the other is the rammer
+    // side by side: push apart; whoever steered into the other is the rammer and the victim is knocked sideways
     const s = a.x < b.x ? -1 : 1;
     a.x += (s * o.ox) / 2; b.x -= (s * o.ox) / 2;
     if (R.bumpCd > 0) return;
-    a.vx = s * 90; b.vx = -s * 90;
     const ia = (inputs[a.id]?.steer || 0) * -s, ib = (inputs[b.id]?.steer || 0) * s;
     victim = ia > ib ? b : ib > ia ? a : null;
     if (victim) {
-      const rammer = victim === a ? b : a;
+      const rammer = victim === a ? b : a, away = victim === a ? s : -s;
+      victim.vx = away * 140; rammer.vx = -away * 50;
       victim.v *= 0.75; victim.wobble = 0.8; victim.hp -= DMG.bumpVictim;
       rammer.hp -= DMG.bumpRammer; rammer.stats.bumps++;
     } else {
+      a.vx = s * 90; b.vx = -s * 90;
       a.v *= 0.88; b.v *= 0.88; a.wobble = b.wobble = 0.4;
       a.hp -= DMG.bumpRammer; b.hp -= DMG.bumpRammer;
     }
   } else {
-    // nose to tail: the one behind loses speed, the one in front gets nudged forward
+    // nose to tail: the one behind loses speed, the one in front is shoved on and fishtails sideways
     const [back, front] = a.y < b.y ? [a, b] : [b, a];
     back.y = front.y - CAR_H - 0.5;
     if (R.bumpCd > 0) return;
-    front.v += 10; front.wobble = 0.5;
+    const rel = Math.max(0, back.v - front.v), side = front.x < back.x ? -1 : front.x > back.x ? 1 : front.id ? 1 : -1;
+    front.v += Math.min(30, 10 + rel * 0.3); front.wobble = 0.8;
+    front.vx = side * (50 + Math.min(70, rel * 0.6));
     back.v = Math.max(0, Math.min(back.v, front.v) - 15);
     back.hp -= DMG.rearBump; front.hp -= DMG.rearBump; back.stats.bumps++;
     victim = front;

@@ -449,8 +449,15 @@ export function drawWorld(race, camY, now, fx, opt = {}) {
       const e = t - v.goneAt;
       if (e > 0.9) continue;
       place(vy, () => { G.globalAlpha = 1 - e / 0.9; G.translate(v.spin * e * 50, 0); G.rotate(v.spin * e * 7); vehicle(v, 0, -v.h / 2); });
-    } else if (v.type === 'tram') for (let k = 0; k < 3; k++) place(vy + v.h / 2 - k * 30 - 14, () => tramSeg(0, -14, k));
-    else place(vy, () => vehicle(v, 0, -v.h / 2));
+      continue;
+    }
+    // knocked by a crash (vy and x already include the shove and the sideways knock): a decaying wobble
+    // plus the nose turning the way it is being pushed
+    const e = 0.8 - v.wob, rot = v.v < 0 ? 0 : (v.wob > 0 ? (v.wdir || 0) * v.wamp * Math.exp(-e * 3) * Math.sin(e * 14) : 0) + Math.atan2(v.kvx || 0, Math.max(40, v.v + (v.dvy || 0))) * 0.6;
+    if (v.type === 'tram') for (let k = 0; k < 3; k++) {
+      const d = v.h / 2 - k * 30 - 14; // section centre ahead of the tram's centre: the whole tram turns about its middle
+      place(vy + d, () => { if (rot) { G.translate(d * Math.sin(rot), 0); G.rotate(rot); } tramSeg(0, -14, k); });
+    } else place(vy, () => { if (rot) G.rotate(rot); vehicle(v, 0, -v.h / 2); });
   }
   // oncoming traffic about to come into view: red marker at the edge of the screen
   if (mod(now * 6, 2) < 1.4) for (const [v, vy] of vis) {

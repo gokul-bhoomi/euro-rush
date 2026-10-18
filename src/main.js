@@ -1,5 +1,5 @@
 import { W, H, HW, MID, STEP, CAR_H, PAL } from './config.js';
-import { TRACKS, roadPos } from './track.js';
+import { TRACKS, roadPos, vehY, vehX } from './track.js';
 import { createRace, stepRace, rank } from './sim.js';
 import { setCtx, R, txt, drawWorld, drawHud, drawBanner, drawMid } from './render.js';
 import { drawTitle, drawTracks, drawResults, drawPause, drawCountdown, drawSoloPanel } from './screens.js';
@@ -179,6 +179,8 @@ window.__game = {
     pickups() { return S.race.track.pickups.filter((k) => !S.race.taken.has(k.id)).map((k) => ({ ...k, x: 68 + k.lane * 32 })); },
     works() { return S.race.track.works; },
     noTraffic() { S.race.veh.length = 0; },
+    // same-direction traffic near road distance y, with its crash knock state (dy = shoved forward, kx = knocked sideways)
+    traffic(y, range = 400) { return S.race.veh.filter((v) => v.v >= 0 && Math.abs(vehY(v, S.race.t) - y) < range).map((v) => ({ id: v.id, type: v.type, lane: v.lane, y: r1(vehY(v, S.race.t)), x: r1(vehX(S.race.track, v, vehY(v, S.race.t))), v: v.v, dy: r1(v.dy), kx: r1(v.kx), wob: r1(v.wob) })); },
     curves() { return S.race.track.curves; },
     pos(s, x) { return roadPos(S.race.track, s, x); },
     snapshot() {
