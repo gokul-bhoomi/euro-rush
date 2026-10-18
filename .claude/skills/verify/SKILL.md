@@ -18,6 +18,7 @@ npm run verify   # unit tests (tests/sim.test.js) + headless-Chrome smoke test (
 
 Both must pass. The pre-commit hook (`.githooks/pre-commit`) runs the same checks and blocks the commit if they fail, and GitHub Actions (`.github/workflows/verify.yml`) runs them on every push and pull request. Never bypass them with `--no-verify`. `main` is protected and requires the `verify` check, so changes land through a pull request from a branch.
 
+- **Intent tests** (`tests/intent.test.js`, and the `intent:` checks in `tests/smoke.mjs`) encode the owner's design decisions. If one fails, don't change the test to make it pass. Report which decision the change breaks and ask the owner; update the test only after they agree.
 - Changed or added rules in `sim.js` / `track.js` (damage, speeds, pickups, bumps, finishing, curves)? **Add or update a test in `tests/sim.test.js` first** and make sure it fails without your change.
 - Added a screen, menu flow or visible feature? **Add a check to `tests/smoke.mjs`** that drives it through the debug API. Note that `d.step(n)` renders only once, after the n steps, so step one frame at a time to exercise drawing at many positions.
 

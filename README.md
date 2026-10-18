@@ -62,7 +62,7 @@ npm install      # once: installs the test tool and turns on the pre-commit hook
 npm run verify   # unit tests + a headless-Chrome smoke test that plays through the game
 ```
 
-**Every commit must pass `npm run verify`.** The pre-commit hook runs it automatically and blocks the commit if anything fails. GitHub Actions runs it again on every push and pull request. `main` is protected: make changes on a branch, open a pull request, and it can merge once the `verify` check passes. Changed a game rule? Add a test in `tests/sim.test.js`. Added a screen or feature? Add a check in `tests/smoke.mjs`. If you use Claude Code, run the `verify` skill before committing.
+**Every commit must pass `npm run verify`.** The pre-commit hook runs it automatically and blocks the commit if anything fails. GitHub Actions runs it again on every push and pull request. `main` is protected: make changes on a branch, open a pull request, and it can merge once the `verify` check passes. Some tests (`tests/intent.test.js` and the `intent:` checks in the smoke test) lock in the game's design decisions, like emptier-but-faster oncoming lanes, Brezel/Döner/espresso, hairpin switchbacks, a short race and the colour palette. If one fails, talk to the owner before changing it. Changed a game rule? Add a test in `tests/sim.test.js`. Added a screen or feature? Add a check in `tests/smoke.mjs`. If you use Claude Code, run the `verify` skill before committing.
 
 - `src/sim.js`: the race rules (pure and deterministic).
 - `src/track.js`: track generation and road path.

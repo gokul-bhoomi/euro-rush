@@ -25,6 +25,15 @@ const base = `http://127.0.0.1:${server.address().port}/`;
 
 const browser = await chromium.launch(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : { channel: 'chrome' });
 const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
+// fake gamepads: tests press buttons with __pad(index, button, on) / move sticks with __axis(index, axis, value)
+await page.addInitScript(() => {
+  const pads = [];
+  const make = (index) => ({ index, id: 'fake pad', connected: true, mapping: 'standard', axes: [0, 0, 0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })) });
+  const get = (i) => { while (pads.length <= i) pads.push(make(pads.length)); return pads[i]; };
+  window.__pad = (i, b, on) => { get(i).buttons[b] = { pressed: on, value: on ? 1 : 0 }; };
+  window.__axis = (i, a, v) => { get(i).axes[a] = v; };
+  navigator.getGamepads = () => pads;
+});
 const problems = [];
 page.on('pageerror', (e) => problems.push(`page error: ${e.message}`));
 page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.(googleapis|gstatic)/.test(m.text())) problems.push(`console error: ${m.text()}`); });
@@ -146,7 +155,95 @@ await check('finish line, then the results screen', async () => {
   await page.screenshot({ path: join(SHOTS, 'results.png') });
 });
 
-await check('no runtime errors', async () => {
+// ---------- design intent: decisions the owner made (see tests/intent.test.js for the rules) ----------
+const tap = async (key) => { await page.keyboard.down(key); await game(() => window.__game.debug.step(1)); await page.keyboard.up(key); await game(() => window.__game.debug.step(1)); };
+const hold = async (keys, frames) => { for (const k of keys) await page.keyboard.down(k); await game((n) => window.__game.debug.step(n), frames); for (const k of keys) await page.keyboard.up(k); };
+const snap = () => game(() => window.__game.debug.snapshot());
+
+await check('intent: full screen shows only the game (the page is just the canvas)', async () => {
+  await open('');
+  const els = await game(() => [...document.body.children].map((e) => e.tagName));
+  expect(JSON.stringify(els) === '["CANVAS","SCRIPT"]', `page has ${els.join(', ')}`);
+  const box = await game(() => { const r = document.querySelector('canvas').getBoundingClientRect(); return [r.width, r.height]; });
+  expect(box[0] === 960 && box[1] === 540, `canvas does not fill the window: ${box}`);
+});
+
+await check('intent: keyboard - P1 drives with WASD, P2 with the arrow keys, P2 joins with Up', async () => {
+  await open('?pause=1');
+  await tap('ArrowUp');
+  expect((await snap()).joined[1], 'Up arrow did not join P2');
+  await game(() => window.__game.debug.startRace({ players: 2, seed: 7, skipCountdown: true }));
+  await game(() => window.__game.debug.noTraffic());
+  await hold(['KeyW', 'ArrowUp'], 120);
+  let [a, b] = (await snap()).race.players;
+  expect(a.v > 50 && b.v > 50, `W / Up did not accelerate: P1 ${a.v}, P2 ${b.v}`);
+  const x0 = [a.x, b.x];
+  await hold(['KeyA', 'ArrowRight'], 15);
+  [a, b] = (await snap()).race.players;
+  expect(a.x < x0[0] && b.x > x0[1], 'A / Right arrow did not steer');
+  await hold(['KeyS', 'ArrowDown'], 60);
+  [a, b] = (await snap()).race.players;
+  expect(a.v < 20 && b.v < 20, `S / Down did not brake: ${a.v}, ${b.v}`);
+});
+
+await check('intent: controllers - pad 1 is P1, pad 2 is P2; A/RT gas, B/LT brake, stick steers, Start pauses', async () => {
+  await open('?pause=1');
+  const pad = (i, b, on) => game(([i, b, on]) => window.__pad(i, b, on), [i, b, on]);
+  await pad(1, 0, true); await game(() => window.__game.debug.step(1)); await pad(1, 0, false); await game(() => window.__game.debug.step(1));
+  expect((await snap()).joined[1], 'A on pad 2 did not join P2');
+  await game(() => { const d = window.__game.debug; d.startRace({ players: 2, seed: 7, skipCountdown: true }); d.noTraffic(); });
+  await pad(0, 0, true); await pad(1, 7, true); await game(() => window.__game.debug.step(120)); // A on pad 1, RT on pad 2
+  let [a, b] = (await snap()).race.players;
+  expect(a.v > 50 && b.v > 50, `A / RT did not accelerate: P1 ${a.v}, P2 ${b.v}`);
+  const x0 = a.x;
+  await game(() => window.__axis(0, 0, -1)); await game(() => window.__game.debug.step(15)); await game(() => window.__axis(0, 0, 0));
+  expect((await snap()).race.players[0].x < x0, 'left stick did not steer P1');
+  await pad(0, 0, false); await pad(1, 7, false); await pad(0, 1, true); await pad(1, 6, true); await game(() => window.__game.debug.step(60)); // B / LT
+  [a, b] = (await snap()).race.players;
+  expect(a.v < 20 && b.v < 20, `B / LT did not brake: ${a.v}, ${b.v}`);
+  await pad(0, 1, false); await pad(1, 6, false);
+  await pad(0, 9, true); await game(() => window.__game.debug.step(1)); await pad(0, 9, false);
+  const t0 = (await snap()).race.t; await game(() => window.__game.debug.step(60));
+  const s = await snap();
+  expect(s.paused && s.race.t === t0, `Start did not pause (paused ${s.paused}, clock ${t0} -> ${s.race.t})`);
+});
+
+await check('intent: Esc pauses and freezes the race clock', async () => {
+  await open('?screen=race&players=2&seed=7&skip=1&pause=1');
+  await game(() => window.__game.debug.step(30));
+  await tap('Escape');
+  const t0 = (await snap()).race.t; await game(() => window.__game.debug.step(120));
+  const s = await snap();
+  expect(s.paused && s.race.t === t0, 'race kept running while paused');
+});
+
+await check('intent: Italia is shown but locked (coming soon); Berlin is the playable track', async () => {
+  await open('?screen=tracks&pause=1');
+  await tap('KeyD'); await tap('Space');
+  let s = await snap();
+  expect(s.screen === 'tracks' && s.trackSel === 1, `choosing Italia left the track screen (${s.screen})`);
+  await tap('KeyA'); await tap('Space');
+  s = await snap();
+  expect(s.screen === 'race' && s.race.length === 20000, 'Berlin did not start');
+});
+
+await check('intent: there is music and sound - menu music, race music, M mutes', async () => {
+  await open('?pause=1');
+  await tap('Space'); // any key unlocks audio (browsers need a key press first)
+  let s = await snap();
+  expect(s.audio.running && s.audio.music === 'menu', `menu music not playing: ${JSON.stringify(s.audio)}`);
+  await tap('Space'); await tap('Space'); // -> tracks -> Berlin
+  s = await snap();
+  expect(s.screen === 'race' && s.audio.music === 'race', `race music not playing: ${s.screen} ${JSON.stringify(s.audio)}`);
+  const m0 = s.audio.muted;
+  await tap('KeyM');
+  s = await snap();
+  expect(s.audio.muted === !m0, 'M did not toggle mute');
+  await tap('KeyM');
+});
+
+await check('no runtime errors'
+, async () => {
   const errs = await game(() => window.__game.errors);
   expect(errs.length === 0 && problems.length === 0, [...errs, ...problems].join('\n       '));
 });
