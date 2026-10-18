@@ -14,33 +14,40 @@ const turn = (s0, angle, R, kind) => ({ s0, s1: s0 + Math.abs(angle) * R + RAMP,
 // Alexanderplatz -> Brandenburger Tor. Everything is generated from the seed.
 export function makeBerlin(seed = 1) {
   const r = rng(seed);
-  const L = 30000;
+  const L = 20000;
   const pick = (a) => a[Math.floor(r() * a.length)];
 
   // The road is a real path: long straights, a few gentle sweepers you can take flat out, and two
   // switchbacks (a 180-degree hairpin, a short leg back down the screen, a hairpin the other way)
   // that you have to brake for. Every feature ends heading north again.
-  const curves = [], parks = [];
-  let s = 2600;
-  for (const f of ['sweep', 'switch', 'sweep', 'switch', 'sweep']) {
+  // Each feature is built from s = 0, then they're spread out with long straights in between.
+  const feats = ['sweep', 'switch', 'sweep', 'switch'].map((f) => {
     const dir = r() < 0.5 ? -1 : 1;
     if (f === 'sweep') {
       const a = (0.45 + r() * 0.25) * dir, R = 450 + Math.floor(r() * 250);
-      const c1 = turn(s, a, R, 'sweep'), c2 = turn(c1.s1 + 300 + Math.floor(r() * 400), -a, R, 'sweep');
-      curves.push(c1, c2); s = c2.s1;
-    } else {
-      const h1 = turn(s, Math.PI * dir, HAIRPIN_R, 'hairpin');
-      const h2 = turn(h1.s1 + 300 + Math.floor(r() * 120), -Math.PI * dir, HAIRPIN_R, 'hairpin');
-      curves.push(h1, h2); parks.push({ s0: h1.s0 - 800, s1: h2.s1 + 800 }); s = h2.s1;
+      const c1 = turn(0, a, R, 'sweep');
+      return [c1, turn(c1.s1 + 300 + Math.floor(r() * 400), -a, R, 'sweep')];
     }
-    s += 3300 + Math.floor(r() * 1200);
+    const h1 = turn(0, Math.PI * dir, HAIRPIN_R, 'hairpin');
+    return [h1, turn(h1.s1 + 300 + Math.floor(r() * 120), -Math.PI * dir, HAIRPIN_R, 'hairpin')];
+  });
+  const START = 2400, END = L - 1700; // straight start (TV tower) and straight run to the gate
+  const gap = (END - START - feats.reduce((n, f) => n + f[1].s1, 0)) / (feats.length - 1);
+  const curves = [], parks = [];
+  let s = START;
+  for (const f of feats) {
+    const placed = f.map((c) => ({ ...c, s0: c.s0 + s, s1: c.s1 + s }));
+    curves.push(...placed);
+    if (placed[0].kind === 'hairpin') parks.push({ s0: placed[0].s0 - 800, s1: placed[1].s1 + 800 });
+    s = placed[1].s1 + gap * (0.8 + r() * 0.2); // never longer than `gap`, so the last one always fits
   }
   const inPark = (y, m = 0) => parks.some((z) => y > z.s0 - m && y < z.s1 + m);
   const nearHairpin = (y0, y1, m) => curves.some((c) => c.kind === 'hairpin' && y1 > c.s0 - m && y0 < c.s1 + m);
 
-  // East Side Gallery: 4km of painted wall on a stretch without switchbacks
-  let g0 = 12000;
-  while (inPark(g0, 0) || inPark(g0 + 4000, 0) || parks.some((z) => z.s0 > g0 && z.s0 < g0 + 4000)) g0 += 250;
+  // East Side Gallery: a long painted wall on a stretch without switchbacks
+  const GAL = 3000;
+  let g0 = 4500;
+  while (g0 < L - GAL - 1000 && (inPark(g0, 0) || inPark(g0 + GAL, 0) || parks.some((z) => z.s0 > g0 && z.s0 < g0 + GAL))) g0 += 250;
 
   // construction zones close one oncoming lane; oncoming cars merge around them
   const works = [];
@@ -71,7 +78,7 @@ export function makeBerlin(seed = 1) {
     add(3, y, SAME_SPEED[3], type, pick(CAR_COLS));
     y += VEH[type].h + 280 + Math.floor(r() * 300);
   }
-  // enough oncoming traffic for a ~7 minute race
+  // enough oncoming traffic for a ~5 minute race
   for (let y = 900; y < L - ONC_SPEED * 420;) {
     const type = r() < 0.18 ? 'truck' : 'car';
     add(r() < 0.5 ? 0 : 1, y, ONC_SPEED, type, pick(CAR_COLS));
@@ -79,9 +86,9 @@ export function makeBerlin(seed = 1) {
   }
 
   return {
-    name: 'BERLIN', finish: 'BRANDENBURGER TOR', km: 8.4, seed, length: L, road: '#4b4c56',
+    name: 'BERLIN', finish: 'BRANDENBURGER TOR', km: 5.6, seed, length: L, road: '#4b4c56',
     curves, parks, works, pickups, vehicles,
-    monuments: [{ kind: 'tower', y: 1100 }, { kind: 'gallery', y0: g0, y1: g0 + 4000 }, { kind: 'gate', y: L }],
+    monuments: [{ kind: 'tower', y: 1100 }, { kind: 'gallery', y0: g0, y1: g0 + GAL }, { kind: 'gate', y: L }],
   };
 }
 

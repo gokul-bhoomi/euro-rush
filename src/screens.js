@@ -67,7 +67,7 @@ export function drawTracks(G, now, sel, joined, previewRace, off, octx, lockedFl
   for (let y = mod(now * 8, 16); y < H; y += 16) G.fillRect(0, Math.round(y), W, 1);
   txt('CHOOSE YOUR ROAD', 240, 12, PAL.accent, 'center', 16, PAL.ui);
   const cards = [
-    { name: 'BERLIN', sub: 'ALEX > BRANDENBURG', tags: 'TRAMS + BAUSTELLE', km: '8.4 KM', flag: ['#111111', '#dd1f1f', '#ffcc00'], v: false, snacks: ['pretzel', 'doner', 'espresso'] },
+    { name: 'BERLIN', sub: 'ALEX > BRANDENBURG', tags: 'TRAMS + BAUSTELLE', km: '5.6 KM', flag: ['#111111', '#dd1f1f', '#ffcc00'], v: false, snacks: ['pretzel', 'doner', 'espresso'] },
     { name: 'ITALIA', sub: 'AMALFI > COLOSSEO', tags: 'COMING SOON', km: '9.1 KM', flag: ['#159947', '#f4f4f4', '#d42a2a'], v: true, snacks: ['croissant', 'pizza', 'espresso'], locked: true },
   ];
   cards.forEach((T, i) => {

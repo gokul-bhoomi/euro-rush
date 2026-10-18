@@ -158,11 +158,12 @@ test('Berlin track is deterministic per seed and traffic never overlaps in a lan
   assert.equal(run2(), run2());
 });
 
-test('Berlin has two switchbacks and a few sweepers, never crosses itself, and ends heading north', () => {
+test('Berlin has two switchbacks and two sweepers, never crosses itself, and ends heading north', () => {
   for (const seed of [1, 4, 9]) {
     const t = makeBerlin(seed);
     assert.equal(t.curves.filter((c) => c.kind === 'hairpin').length, 4, 'two switchbacks = four hairpins');
-    assert.equal(t.curves.filter((c) => c.kind === 'sweep').length, 6);
+    assert.equal(t.curves.filter((c) => c.kind === 'sweep').length, 4);
+    assert.equal(t.length, 20000);
     for (let i = 1; i < t.curves.length; i++) assert.ok(t.curves[i].s0 > t.curves[i - 1].s1, 'turns never overlap');
     assert.ok(t.curves.at(-1).s1 < t.length - 1500, 'straight run to the finish');
     assert.ok(Math.abs(roadPos(t, t.length).a) < 1e-6, 'finish line faces north');
