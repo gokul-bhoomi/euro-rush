@@ -4,7 +4,13 @@ A two-player retro top-down racing game for the couch. Plug a laptop into the TV
 
 Runs in the browser. No install and no build step.
 
-## Start the game
+## Play now
+
+**https://gokul-bhoomi.github.io/euro-rush/**
+
+Open the link in Chrome, Edge or Firefox. Nothing to install.
+
+## Run it locally
 
 The game uses JavaScript modules, so it has to be served over HTTP. Opening `index.html` straight from disk won't work.
 
